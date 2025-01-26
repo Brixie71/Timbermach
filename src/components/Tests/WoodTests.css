@@ -1,0 +1,13 @@
+/* Custom CSS to remove the visible scrollbar */
+.no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* For Chrome, Safari, and Edge */
+  }
+  
+  ::-webkit-scrollbar {
+    display: none;
+  }
