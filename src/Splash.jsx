@@ -16,7 +16,7 @@ const Splash = ({ onComplete }) => {
         </div>
         <h1 className="text-4xl font-bold text-white mb-4">TimberMach</h1>
         <div className="animate-pulse">
-          <p className="text-blue-400">Loading your workspace...</p>
+          <p className="text-blue-400">Timber Testing Maching.</p>
         </div>
       </div>
     </div>
