@@ -19,7 +19,7 @@ app.on('ready', () => {
     height: 480,
     webPreferences: {
       contextIsolation: false,
-      nodeIntegration: true,
+      nodeIntegration: false,
     },
   });
 

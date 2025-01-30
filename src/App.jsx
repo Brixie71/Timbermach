@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { IoIosArrowForward } from "react-icons/io";
-import { IoMdMenu } from "react-icons/io";
-import { IoMdCog } from "react-icons/io";
-import { IoMdPower } from "react-icons/io";
+import { IoIosArrowForward, IoMdMenu, IoMdCog, IoMdPower } from "react-icons/io";
 import Header from './components/Header/Header';
 import WoodTests from './components/Tests/WoodTests';
 import Splash from './Splash';
 import Dash from './components/Dash/Dash';
+import Settings from './components/Settings/Settings'; // Import the new Settings component
 import './App.css';
 
 function App() {
@@ -24,10 +22,14 @@ function App() {
   };
 
   const renderContent = () => {
-    if (activeItem === 'strength-test') {
-      return <WoodTests />;
+    switch (activeItem) {
+      case 'strength-test':
+        return <WoodTests />;
+      case 'settings':
+        return <Settings />;
+      default:
+        return <Dash />;
     }
-    return <Dash />;
   };
 
   return (
@@ -56,7 +58,7 @@ function App() {
             </button>
             <Header />
             <span className="ml-4 text-gray-100 text-lg font-semibold">
-              | {activeItem === 'strength-test' ? 'Strength Test' : 'Dashboard'}
+              | {activeItem === 'strength-test' ? 'Strength Test' : activeItem === 'settings' ? 'Settings' : 'Dashboard'}
             </span>
             <button
               className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 ml-auto

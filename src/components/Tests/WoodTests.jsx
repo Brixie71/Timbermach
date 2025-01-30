@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import './WoodTests.css'; // Import custom CSS for scrollbar styling
 import KiloNewtonGauge from './KiloNewtonGuage';
 
 const WoodTests = () => {
+  // State management
   const [selectedTest, setSelectedTest] = useState(null);
   const [subType, setSubType] = useState('');
   const [includeMeasurement, setIncludeMeasurement] = useState(false);
   const [includeMoisture, setIncludeMoisture] = useState(false);
-  const [audio] = useState(new Audio('/resources/Sounds/UI/button_press_Beep.mp3')); // Add sound file path here
-  const [testStarted, setTestStarted] = useState(false); // New state for tracking test status
+  const [audio] = useState(new Audio('/resources/Sounds/UI/button_press_Beep.mp3'));
+  const [testStarted, setTestStarted] = useState(false); // Tracks if the test has started
 
+  // Test options
   const tests = [
     { title: 'Compressive Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
     { title: 'Shear Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
@@ -18,29 +20,35 @@ const WoodTests = () => {
     { title: 'Measure Dimension', image: 'resources/Cards/Strength Test/Card_Default.png' }
   ];
 
+  // Handle test selection
   const handleTestClick = (title) => {
-    audio.play(); // Play sound on click
+    audio.play();
     setSelectedTest(title);
+    resetSelections(); // Reset selections when a new test is clicked
+  };
+
+  // Reset selections
+  const resetSelections = () => {
     setSubType('');
     setIncludeMeasurement(false);
     setIncludeMoisture(false);
   };
 
-  // Add function to check if form is valid
+  // Validate form inputs based on selected test
   const isFormValid = () => {
-    // For Compressive and Shear tests, require subType selection
     if (selectedTest === 'Compressive Test' || selectedTest === 'Shear Test') {
-      return subType !== '';
+      return subType !== ''; // Require subType selection
     }
-    // For Flexure test, no subType needed
-    return true;
+    return true; // No additional validation for other tests
   };
 
+  // Close the modal
   const handleClose = () => {
-    audio.play(); // Play sound on close
+    audio.play();
     setSelectedTest(null);
   };
 
+  // Begin the test and log parameters
   const handleBeginTest = () => {
     audio.play();
     setTestStarted(true);
@@ -52,11 +60,11 @@ const WoodTests = () => {
     });
   };
 
-  // If test is started, show the KiloNewtonGauge
+  // Render the KiloNewtonGauge if the test has started
   if (testStarted) {
     return (
       <KiloNewtonGauge 
-        testType={selectedTest?.split(' ')[0]?.toLowerCase()} // Extract first word (compressive/shear/flexure)
+        testType={selectedTest?.split(' ')[0]?.toLowerCase()} // Extract first word of the test type
       />
     );
   }
@@ -70,10 +78,10 @@ const WoodTests = () => {
               key={title}
               onClick={() => handleTestClick(title)}
               className={`bg-white rounded-lg shadow-md hover:shadow-lg 
-                       transition-all duration-300 ease-in-out
-                       transform hover:-translate-y-1
-                       border border-gray-400 w-60 h-80 overflow-hidden flex-shrink-0  
-                       ${selectedTest === title ? 'ring-2 ring-blue-500' : ''}`}
+                          transition-all duration-300 ease-in-out
+                          transform hover:-translate-y-1
+                          border border-gray-400 w-60 h-80 overflow-hidden flex-shrink-0  
+                          ${selectedTest === title ? 'ring-2 ring-blue-500' : ''}`}
             >
               <div className="h-full flex flex-col">
                 <img 
@@ -90,8 +98,8 @@ const WoodTests = () => {
         </div>
       </div>
 
-      {/* Modal - Now separated from main content */}
-      {selectedTest && (selectedTest === 'Compressive Test' || selectedTest === 'Shear Test' || selectedTest === 'Flexure Test') && (
+      {/* Modal for test parameters */}
+      {selectedTest && (['Compressive Test', 'Shear Test', 'Flexure Test'].includes(selectedTest)) && (
         <>
           <div className="fixed inset-0 bg-black bg-opacity-50 z-40" />
           <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -110,64 +118,22 @@ const WoodTests = () => {
 
               {/* Modal Content */}
               <div className="p-6">
-                {/* Sub-type selection and Additional Tests in a row */}
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Test Type Section */}
-                  {(selectedTest === 'Compressive Test' || selectedTest === 'Shear Test') && (
+                  {/* Test Type Selection */}
+                  {['Compressive Test', 'Shear Test'].includes(selectedTest) && (
                     <div className="mb-6">
                       <h3 className="text-lg font-semibold mb-2">Test Type</h3>
                       <div className="grid grid-cols-1 gap-4">
                         {selectedTest === 'Compressive Test' && (
                           <>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                name="subType"
-                                value="parallel"
-                                checked={subType === 'parallel'}
-                                onChange={(e) => setSubType(e.target.value)}
-                                className="form-radio"
-                              />
-                              <span>Parallel to Grain</span>
-                            </label>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                name="subType"
-                                value="perpendicular"
-                                checked={subType === 'perpendicular'}
-                                onChange={(e) => setSubType(e.target.value)}
-                                className="form-radio"
-                              />
-                              <span>Perpendicular to Grain</span>
-                            </label>
+                            <RadioOption value="parallel" label="Parallel to Grain" selectedValue={subType} setValue={setSubType} />
+                            <RadioOption value="perpendicular" label="Perpendicular to Grain" selectedValue={subType} setValue={setSubType} />
                           </>
                         )}
-                        
                         {selectedTest === 'Shear Test' && (
                           <>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                name="subType"
-                                value="single"
-                                checked={subType === 'single'}
-                                onChange={(e) => setSubType(e.target.value)}
-                                className="form-radio"
-                              />
-                              <span>Single Shear</span>
-                            </label>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                name="subType"
-                                value="double"
-                                checked={subType === 'double'}
-                                onChange={(e) => setSubType(e.target.value)}
-                                className="form-radio"
-                              />
-                              <span>Double Shear</span>
-                            </label>
+                            <RadioOption value="single" label="Single Shear" selectedValue={subType} setValue={setSubType} />
+                            <RadioOption value="double" label="Double Shear" selectedValue={subType} setValue={setSubType} />
                           </>
                         )}
                       </div>
@@ -178,33 +144,9 @@ const WoodTests = () => {
                   <div className="space-y-2">
                     <h3 className="text-lg font-semibold mb-2">Tests Included</h3>
                     <div className="grid grid-cols-1 gap-4">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={includeMeasurement}
-                          onChange={(e) => setIncludeMeasurement(e.target.checked)}
-                          className="form-checkbox"
-                        />
-                        <span>Measure Dimensions</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={includeMoisture}
-                          onChange={(e) => setIncludeMoisture(e.target.checked)}
-                          className="form-checkbox"
-                        />
-                        <span>Moisture Test</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={true}
-                          disabled
-                          className="form-checkbox"
-                        />
-                        <span>{selectedTest}</span>
-                      </label>
+                      <CheckboxOption label="Measure Dimensions" checked={includeMeasurement} setChecked={setIncludeMeasurement} />
+                      <CheckboxOption label="Moisture Test" checked={includeMoisture} setChecked={setIncludeMoisture} />
+                      <CheckboxOption label={selectedTest} checked={true} disabled />
                     </div>
                   </div>
                 </div>
@@ -216,9 +158,9 @@ const WoodTests = () => {
                   onClick={handleBeginTest}
                   disabled={!isFormValid()}
                   className={`w-full py-4 font-medium transition-colors text-lg rounded-b-lg
-                    ${isFormValid() 
-                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                              ${isFormValid() 
+                                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
                 >
                   Begin Test
                 </button>
@@ -230,5 +172,34 @@ const WoodTests = () => {
     </>
   );
 };
+
+// Radio option component for cleaner code
+const RadioOption = ({ value, label, selectedValue, setValue }) => (
+  <label className="flex items-center space-x-2">
+    <input
+      type="radio"
+      name="subType"
+      value={value}
+      checked={selectedValue === value}
+      onChange={() => setValue(value)}
+      className="form-radio"
+    />
+    <span>{label}</span>
+  </label>
+);
+
+// Checkbox option component for cleaner code
+const CheckboxOption = ({ label, checked, setChecked, disabled = false }) => (
+  <label className="flex items-center space-x-2">
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => setChecked(e.target.checked)}
+      className="form-checkbox"
+      disabled={disabled}
+    />
+    <span>{label}</span>
+  </label>
+);
 
 export default WoodTests;

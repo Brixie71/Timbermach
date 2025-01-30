@@ -1,0 +1,22 @@
+/* Splash.css */
+.splash-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('./Spash/Splash.png'); /* Replace with your image path */
+    background-size: cover;
+    background-repeat: no-repeat;
+    animation: pan 130s linear infinite; /* Adjust duration as needed */
+  }
+  
+  /* Keyframes for panning animation */
+  @keyframes pan {
+    0% {
+      transform: translateX(0%); /* Start from the right */
+    }
+    100% {
+      transform: translateX(-100%); /* Move to the left */
+    }
+  }
