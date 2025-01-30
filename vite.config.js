@@ -1,17 +1,16 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-module.exports = {
-  root: './',
+export default defineConfig({
+  root: "./",
   build: {
-      outDir: 'dist',
+    outDir: "dist",
   },
-  publicDir: 'resources',
+  publicDir: "resources",
 
   plugins: [react()],
 
-  server:{
+  server: {
     host: true,
   },
-
-} 
+});
