@@ -16,7 +16,8 @@ const Splash = ({ onComplete }) => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-bounce mb-8">
-            <span className="text-6xl">🔬</span>
+            {/* Replace span with img for the logo */}
+            <img src={"resources/Splash/TSULogo.png"} alt="TimberMach Logo" className="items-center w-28px h-38px" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">TimberMach</h1>
           <div className="animate-pulse">

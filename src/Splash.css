@@ -3,9 +3,9 @@
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
+    width: 105%;
     height: 100%;
-    background-image: url('./Spash/Splash.png'); /* Replace with your image path */
+    background-image: url('/resources/Splash/Splash.png'); /* Replace with your image path */
     background-size: cover;
     background-repeat: no-repeat;
     animation: pan 130s linear infinite; /* Adjust duration as needed */

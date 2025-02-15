@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
-import './WoodTests.css'; // Import custom CSS for scrollbar styling
+import './WoodTests.css'; 
 import KiloNewtonGauge from './KiloNewtonGuage';
 
 const WoodTests = () => {
-  // State management
+  
+  // Use State
   const [selectedTest, setSelectedTest] = useState(null);
   const [subType, setSubType] = useState('');
   const [includeMeasurement, setIncludeMeasurement] = useState(false);
   const [includeMoisture, setIncludeMoisture] = useState(false);
-  const [audio] = useState(new Audio('/resources/Sounds/UI/button_press_Beep.mp3'));
-  const [testStarted, setTestStarted] = useState(false); // Tracks if the test has started
+  const [audio] = useState(new Audio('/resources/Sounds/UI/button_press_Beep.mp3')); // UI Sound Cue
+  const [testStarted, setTestStarted] = useState(false); 
 
-  // Test options
+  // Card Paths 
   const tests = [
-    { title: 'Compressive Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
+    { title: 'Compressive Test', image: "resources/Cards/Strength Test/Card_Default.png" },
     { title: 'Shear Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
     { title: 'Flexure Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
     { title: 'Moisture Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
