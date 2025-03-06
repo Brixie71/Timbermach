@@ -1,32 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
-// Sample data for the tables (you can replace this with real data)
-const compressiveData = [
-  { name: 'Specimen 1', width: 10, height: 20, length: 30, area: 600, moistureContent: 12, maxForceLoad: 15, photo: null },
-  // Add more data as needed
-];
-
-const shearData = [
-  { name: 'Specimen 2', width: 10, height: 20, length: 30, area: 600, moistureContent: 10, maxForceLoad: 18, photo: null },
-  // Add more data as needed
-];
-
-const flexureData = [
-  { name: 'Specimen 3', width: 10, height: 20, length: 30, area: 600, moistureContent: 14, maxForceLoad: 20, photo: null },
-  // Add more data as needed
-];
-
-const woodMoistureData = [
-  { name: 'Specimen 4', moistureContent: 15, photo: null },
-  // Add more data as needed
-];
-
-const measurementData = [
-  { name: 'Specimen 5', width: 10, height: 20, length: 30, area: 600, photo: null },
-  // Add more data as needed
-];
-
-// Table component to render individual tables
 const DataTable = ({ title, headers, data }) => (
   <div className="mb-6 bg-white shadow-md rounded-lg overflow-hidden">
     <h3 className="text-lg font-semibold bg-gray-200 p-4">{title}</h3>
@@ -42,8 +16,10 @@ const DataTable = ({ title, headers, data }) => (
         <tbody>
           {data.map((row, rowIndex) => (
             <tr key={rowIndex} className="hover:bg-gray-50 transition duration-200">
-              {Object.values(row).map((cell, cellIndex) => (
-                <td key={cellIndex} className="py-2 px-4 border-b text-gray-700">{cell}</td>
+              {headers.map((header, cellIndex) => (
+                <td key={cellIndex} className="py-2 px-4 border-b text-gray-700">
+                  {row[header.toLowerCase().replace(/ /g, '_')] ?? '-'}
+                </td>
               ))}
             </tr>
           ))}
@@ -54,6 +30,26 @@ const DataTable = ({ title, headers, data }) => (
 );
 
 const Dash = () => {
+  const [compressiveData, setCompressiveData] = useState([]);
+  const [shearData, setShearData] = useState([]);
+  const [flexureData, setFlexureData] = useState([]);
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+
+  useEffect(() => {
+    axios.get(`${apiBaseUrl}/compressive-data`)
+      .then(response => setCompressiveData(response.data))
+      .catch(error => console.error('Failed to fetch compressive data:', error));
+
+    axios.get(`${apiBaseUrl}/shear-data`)
+      .then(response => setShearData(response.data))
+      .catch(error => console.error('Failed to fetch shear data:', error));
+
+    axios.get(`${apiBaseUrl}/flexure-data`)
+      .then(response => setFlexureData(response.data))
+      .catch(error => console.error('Failed to fetch flexure data:', error));
+  }, []);
+
   return (
     <div className="max-w-7xl mx-auto p-6">
       <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
@@ -62,36 +58,22 @@ const Dash = () => {
       {/* Compressive Test Table */}
       <DataTable
         title="Compressive Test Results"
-        headers={['Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load (kN)', 'Photo']}
+        headers={['ID', 'Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load']}
         data={compressiveData}
       />
 
       {/* Shear Test Table */}
       <DataTable
         title="Shear Test Results"
-        headers={['Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load (kN)', 'Photo']}
+        headers={['ID', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load']}
         data={shearData}
       />
 
       {/* Flexure Test Table */}
       <DataTable
         title="Flexure Test Results"
-        headers={['Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load (kN)', 'Photo']}
+        headers={['ID', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load']}
         data={flexureData}
-      />
-
-      {/* Wood Moisture Table */}
-      <DataTable
-        title="Wood Moisture Content"
-        headers={['Specimen Name', 'Moisture Content', 'Photo']}
-        data={woodMoistureData}
-      />
-
-      {/* Measurement Table */}
-      <DataTable
-        title="Measurement Results"
-        headers={['Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Photo']}
-        data={measurementData}
       />
     </div>
   );

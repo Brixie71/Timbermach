@@ -25,9 +25,9 @@ const KiloNewtonGauge = ({ testType }) => {
   const config = gaugeConfigs[testType?.toLowerCase()] || defaultConfig; // Get the configuration based on testType
 
   // Ensure the gauge value does not exceed the max
-  const gaugeValue = Math.min(kNValue, config.max); 
+  const gaugeValue = Math.min(kNValue, config.max);
   // Calculate the percentage filled (corrected to fill only until max value)
-  const percentage = (gaugeValue / config.max) * 100; 
+  const percentage = (gaugeValue / config.max) * 100;
 
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:8080");
@@ -68,7 +68,7 @@ const KiloNewtonGauge = ({ testType }) => {
               strokeLinejoin="round"
               strokeDasharray="565"
             />
-            
+
             {/* Blue progress arc with animation */}
             <path
               d="M 40,170 A 90,90 0 1,1 160,170"

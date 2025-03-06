@@ -1,24 +1,24 @@
 import React, { useState } from 'react';
-import './WoodTests.css'; 
+import './WoodTests.css';
 import KiloNewtonGauge from './KiloNewtonGuage';
 
 const WoodTests = () => {
-  
+
   // Use State
   const [selectedTest, setSelectedTest] = useState(null);
   const [subType, setSubType] = useState('');
   const [includeMeasurement, setIncludeMeasurement] = useState(false);
   const [includeMoisture, setIncludeMoisture] = useState(false);
-  const [audio] = useState(new Audio('/resources/Sounds/UI/button_press_Beep.mp3')); // UI Sound Cue
-  const [testStarted, setTestStarted] = useState(false); 
+  const [audio] = useState(new Audio('Sounds/UI/button_press_Beep.mp3')); // UI Sound Cue
+  const [testStarted, setTestStarted] = useState(false);
 
   // Card Paths 
   const tests = [
-    { title: 'Compressive Test', image: "resources/Cards/Strength Test/Card_Default.png" },
-    { title: 'Shear Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
-    { title: 'Flexure Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
-    { title: 'Moisture Test', image: 'resources/Cards/Strength Test/Card_Default.png' },
-    { title: 'Measure Dimension', image: 'resources/Cards/Strength Test/Card_Default.png' }
+    { title: 'Compressive Test', image: "Cards/Strength Test/Card_Default.png" },
+    { title: 'Shear Test', image: 'Cards/Strength Test/Card_Default.png' },
+    { title: 'Flexure Test', image: 'Cards/Strength Test/Card_Default.png' },
+    { title: 'Moisture Test', image: 'Cards/Strength Test/Card_Default.png' },
+    { title: 'Measure Dimension', image: 'Cards/Strength Test/Card_Default.png' }
   ];
 
   // Handle test selection
@@ -64,7 +64,7 @@ const WoodTests = () => {
   // Render the KiloNewtonGauge if the test has started
   if (testStarted) {
     return (
-      <KiloNewtonGauge 
+      <KiloNewtonGauge
         testType={selectedTest?.split(' ')[0]?.toLowerCase()} // Extract first word of the test type
       />
     );
@@ -85,10 +85,10 @@ const WoodTests = () => {
                           ${selectedTest === title ? 'ring-2 ring-blue-500' : ''}`}
             >
               <div className="h-full flex flex-col">
-                <img 
-                  src={image} 
+                <img
+                  src={image}
                   alt={title}
-                  className="w-full h-60 object-cover border-b border-gray-400"  
+                  className="w-full h-60 object-cover border-b border-gray-400"
                 />
                 <div className="p-6 flex-grow flex items-center justify-center">
                   <h3 className="text-xl font-semibold text-black">{title}</h3>
@@ -107,7 +107,7 @@ const WoodTests = () => {
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">
               <div className="flex justify-between items-center border-b p-4">
                 <h2 className="text-2xl font-bold">{selectedTest} Parameters</h2>
-                <button 
+                <button
                   onClick={handleClose}
                   className="text-gray-500 hover:text-gray-700"
                 >
@@ -159,9 +159,9 @@ const WoodTests = () => {
                   onClick={handleBeginTest}
                   disabled={!isFormValid()}
                   className={`w-full py-4 font-medium transition-colors text-lg rounded-b-lg
-                              ${isFormValid() 
-                                ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                              ${isFormValid()
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
                 >
                   Begin Test
                 </button>

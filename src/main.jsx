@@ -8,6 +8,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
+/*
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
@@ -29,4 +30,4 @@ app.on('ready', () => {
   } else {
     mainWindow.loadFile(path.join(__dirname, 'build', 'index.html')); // Production build
   }
-});
+});*/

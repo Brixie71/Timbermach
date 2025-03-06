@@ -1,5 +1,7 @@
 import React from 'react';
 import './Splash.css'; // Import the CSS file for styles
+import TSULogo from '/Splash/TSULogo.png';
+
 
 const Splash = ({ onComplete }) => {
   // Effect to trigger onComplete after 4 seconds
@@ -17,7 +19,7 @@ const Splash = ({ onComplete }) => {
         <div className="text-center">
           <div className="animate-bounce mb-8">
             {/* Replace span with img for the logo */}
-            <img src={"resources/Splash/TSULogo.png"} alt="TimberMach Logo" className="items-center w-28px h-38px" />
+            <img src={TSULogo} alt="TimberMach Logo" className="items-center w-28px h-38px" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">TimberMach</h1>
           <div className="animate-pulse">
