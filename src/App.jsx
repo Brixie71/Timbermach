@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { IoIosArrowForward, IoMdMenu, IoMdCog, IoMdPower } from "react-icons/io";
 import Header from './components/Header/Header';
 import WoodTests from './components/Tests/WoodTests';
-import Splash from './Splash';
 import Dash from './components/Dash/Dash';
 import Settings from './components/Settings/Settings'; // Import the new Settings component
 import './App.css';
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [activeItem, setActiveItem] = useState('dashboard');
   const [showPowerModal, setShowPowerModal] = useState(false);
@@ -34,9 +32,7 @@ function App() {
 
   return (
     <>
-      {isLoading ? (
-        <Splash onComplete={() => setIsLoading(false)} />
-      ) : (
+      {(
         <div className="font-sans relative overflow-hidden">
           {/* Sidebar Overlay */}
           {isNavOpen && (

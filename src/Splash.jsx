@@ -2,7 +2,6 @@ import React from 'react';
 import './Splash.css'; // Import the CSS file for styles
 import TSULogo from '/Splash/TSULogo.png';
 
-
 const Splash = ({ onComplete }) => {
   // Effect to trigger onComplete after 4 seconds
   React.useEffect(() => {
@@ -16,15 +15,17 @@ const Splash = ({ onComplete }) => {
     <div className="fixed inset-0 overflow-hidden">
       <div className="splash-background" />
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-bounce mb-8">
-            {/* Replace span with img for the logo */}
-            <img src={TSULogo} alt="TimberMach Logo" className="items-center w-28px h-38px" />
+        <div className="splash-content text-center">
+          <div className="mb-8">
+            {/* Logo with custom class instead of animate-pulse */}
+            <img 
+              src={TSULogo} 
+              alt="TimberMach Logo" 
+              className="splash-logo" 
+            />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-4">TimberMach</h1>
-          <div className="animate-pulse">
-            <p className="text-blue-400">Timber Testing Machine.</p>
-          </div>
+          <h1 className="splash-title">TimberMach</h1>
+          {/* Removed the "Timber Testing Machine" subtitle */}
         </div>
       </div>
     </div>
