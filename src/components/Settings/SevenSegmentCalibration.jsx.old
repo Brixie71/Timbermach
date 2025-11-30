@@ -1,0 +1,778 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Square, Check, AlertCircle, Trash2, ArrowRight, Eye, ArrowLeft, RotateCcw } from 'lucide-react';
+
+const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
+  const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  
+  // States
+  const [step, setStep] = useState(1); // 1: Camera, 2: Display Box, 3: Segment Boxes, 4: Verify
+  const [videoStream, setVideoStream] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [displayBox, setDisplayBox] = useState(null);
+  const [segmentBoxes, setSegmentBoxes] = useState([[], [], []]); // 3 digits, 7 segments each
+  const [currentDigit, setCurrentDigit] = useState(0);
+  const [currentSegment, setCurrentSegment] = useState(0);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState(null);
+  const [tempBox, setTempBox] = useState(null);
+  const [recognitionResult, setRecognitionResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const overlayCanvasRef = useRef(null);
+  
+  const SEGMENT_LABELS = ['A (Top)', 'B (Top-Right)', 'C (Bottom-Right)', 'D (Bottom)', 'E (Bottom-Left)', 'F (Top-Left)', 'G (Middle)'];
+  const DIGIT_COLORS = ['#3b82f6', '#ef4444', '#10b981']; // Blue, Red, Green
+
+  // Start camera
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 1280, height: 720 } 
+      });
+      setVideoStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setError(null);
+    } catch (err) {
+      console.error("Camera error:", err);
+      setError("Failed to access camera. Please check permissions.");
+    }
+  };
+
+  // Capture frame
+  const captureFrame = () => {
+    if (!videoRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    const imageData = canvas.toDataURL('image/png');
+    setCapturedImage(imageData);
+    
+    // Stop video
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      setVideoStream(null);
+    }
+    
+    setStep(2);
+  };
+
+  // Retake photo
+  const retakePhoto = () => {
+    setCapturedImage(null);
+    setDisplayBox(null);
+    setSegmentBoxes([[], [], []]);
+    setCurrentDigit(0);
+    setCurrentSegment(0);
+    setStep(1);
+    startCamera();
+  };
+
+  // Get canvas coordinates from mouse event
+  const getCanvasCoordinates = (e) => {
+    const canvas = overlayCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  };
+
+  // Mouse handlers for drawing boxes
+  const handleMouseDown = (e) => {
+    if (step !== 2 && step !== 3) return;
+    
+    const coords = getCanvasCoordinates(e);
+    setStartPoint(coords);
+    setIsDrawing(true);
+    setTempBox(null);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDrawing || !startPoint) return;
+    
+    const coords = getCanvasCoordinates(e);
+    
+    setTempBox({
+      x: Math.min(startPoint.x, coords.x),
+      y: Math.min(startPoint.y, coords.y),
+      width: Math.abs(coords.x - startPoint.x),
+      height: Math.abs(coords.y - startPoint.y)
+    });
+  };
+
+  const handleMouseUp = () => {
+    if (!isDrawing || !tempBox) {
+      setIsDrawing(false);
+      setStartPoint(null);
+      return;
+    }
+    
+    setIsDrawing(false);
+    setStartPoint(null);
+    
+    if (tempBox.width < 10 || tempBox.height < 10) {
+      setTempBox(null);
+      return;
+    }
+    
+    if (step === 2) {
+      // Save display box
+      setDisplayBox(tempBox);
+      setTempBox(null);
+    } else if (step === 3) {
+      // Save segment box
+      const newSegmentBoxes = [...segmentBoxes];
+      if (!newSegmentBoxes[currentDigit]) {
+        newSegmentBoxes[currentDigit] = [];
+      }
+      newSegmentBoxes[currentDigit][currentSegment] = tempBox;
+      setSegmentBoxes(newSegmentBoxes);
+      setTempBox(null);
+      
+      // Move to next segment
+      if (currentSegment < 6) {
+        setCurrentSegment(currentSegment + 1);
+      } else if (currentDigit < 2) {
+        setCurrentDigit(currentDigit + 1);
+        setCurrentSegment(0);
+      }
+    }
+  };
+
+  // Clear current segment box
+  const clearCurrentSegment = () => {
+    const newSegmentBoxes = [...segmentBoxes];
+    if (newSegmentBoxes[currentDigit] && newSegmentBoxes[currentDigit][currentSegment]) {
+      newSegmentBoxes[currentDigit][currentSegment] = null;
+      setSegmentBoxes(newSegmentBoxes);
+    }
+  };
+
+  // Clear all segment boxes for current digit
+  const clearCurrentDigit = () => {
+    const newSegmentBoxes = [...segmentBoxes];
+    newSegmentBoxes[currentDigit] = [];
+    setSegmentBoxes(newSegmentBoxes);
+    setCurrentSegment(0);
+  };
+
+  // Clear all segment boxes
+  const clearAllSegments = () => {
+    setSegmentBoxes([[], [], []]);
+    setCurrentDigit(0);
+    setCurrentSegment(0);
+  };
+
+  // Confirm display box and move to segment calibration
+  const confirmDisplayBox = async () => {
+    if (!displayBox) return;
+    
+    setIsProcessing(true);
+    try {
+      // Create default segment boxes from backend
+      const response = await fetch(`${API_URL}/api/seven-segment/create-defaults`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayBox,
+          numDigits: 3
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSegmentBoxes(data.segmentBoxes);
+      }
+      
+      setStep(3);
+      setCurrentDigit(0);
+      setCurrentSegment(0);
+    } catch (err) {
+      console.error("Error creating defaults:", err);
+      // Continue anyway with empty boxes
+      setStep(3);
+      setCurrentDigit(0);
+      setCurrentSegment(0);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Skip to next segment/digit
+  const skipCurrent = () => {
+    if (currentSegment < 6) {
+      setCurrentSegment(currentSegment + 1);
+    } else if (currentDigit < 2) {
+      setCurrentDigit(currentDigit + 1);
+      setCurrentSegment(0);
+    }
+  };
+
+  // Go back to previous segment/digit
+  const goBackSegment = () => {
+    if (currentSegment > 0) {
+      setCurrentSegment(currentSegment - 1);
+    } else if (currentDigit > 0) {
+      setCurrentDigit(currentDigit - 1);
+      setCurrentSegment(6);
+    }
+  };
+
+  // Go back to previous step
+  const goBackStep = () => {
+    if (step === 2) {
+      retakePhoto();
+    } else if (step === 3) {
+      setStep(2);
+      setSegmentBoxes([[], [], []]);
+      setCurrentDigit(0);
+      setCurrentSegment(0);
+    } else if (step === 4) {
+      setStep(3);
+      setRecognitionResult(null);
+    }
+  };
+
+  // Complete calibration
+  const completeCalibration = async () => {
+    setIsProcessing(true);
+    setError(null);
+    
+    try {
+      // Save calibration to Laravel backend
+      const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+      
+      const response = await fetch(`${LARAVEL_API_URL}/api/calibration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_name: 'Moisture Meter',
+          setting_type: 'seven_segment',
+          num_digits: 3,
+          display_box: displayBox,
+          segment_boxes: segmentBoxes,
+          notes: 'Created from calibration wizard'
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Calibration failed');
+      }
+      
+      // Also send to Python backend for CV processing
+      try {
+        await fetch(`${API_URL}/api/seven-segment/calibrate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            displayBox,
+            segmentBoxes
+          })
+        });
+      } catch (pythonErr) {
+        console.warn('Python backend calibration failed:', pythonErr);
+        // Continue anyway - Laravel has the calibration
+      }
+      
+      setStep(4);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Test recognition
+  const testRecognition = async () => {
+    setIsProcessing(true);
+    setError(null);
+    
+    try {
+      // Convert base64 to blob
+      const response = await fetch(capturedImage);
+      const blob = await response.blob();
+      
+      const formData = new FormData();
+      formData.append('image', blob, 'test.png');
+      
+      const apiResponse = await fetch(`${API_URL}/api/seven-segment/recognize`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await apiResponse.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Recognition failed');
+      }
+      
+      setRecognitionResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Reset
+  const reset = () => {
+    setStep(1);
+    setCapturedImage(null);
+    setDisplayBox(null);
+    setSegmentBoxes([[], [], []]);
+    setCurrentDigit(0);
+    setCurrentSegment(0);
+    setRecognitionResult(null);
+    setError(null);
+    setTempBox(null);
+    setIsDrawing(false);
+    setStartPoint(null);
+  };
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [videoStream]);
+
+  // Draw overlay canvas
+  useEffect(() => {
+    if (!capturedImage || !overlayCanvasRef.current) return;
+    
+    const canvas = overlayCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // Load image to get dimensions
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw display box
+      if (displayBox && step >= 2) {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(displayBox.x, displayBox.y, displayBox.width, displayBox.height);
+        
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText('Display Region', displayBox.x + 5, displayBox.y - 5);
+      }
+      
+      // Draw segment boxes
+      if (step >= 3) {
+        segmentBoxes.forEach((digit, digitIdx) => {
+          if (digit) {
+            digit.forEach((seg, segIdx) => {
+              if (seg) {
+                const isActive = digitIdx === currentDigit && segIdx === currentSegment && step === 3;
+                ctx.strokeStyle = isActive ? '#fbbf24' : DIGIT_COLORS[digitIdx];
+                ctx.lineWidth = isActive ? 3 : 2;
+                ctx.strokeRect(seg.x, seg.y, seg.width, seg.height);
+                
+                // Label
+                ctx.fillStyle = isActive ? '#fbbf24' : DIGIT_COLORS[digitIdx];
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(
+                  `D${digitIdx + 1}-${['A','B','C','D','E','F','G'][segIdx]}`,
+                  seg.x + 2,
+                  seg.y + 12
+                );
+              }
+            });
+          }
+        });
+      }
+      
+      // Draw temp box
+      if (tempBox && isDrawing) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(tempBox.x, tempBox.y, tempBox.width, tempBox.height);
+        ctx.setLineDash([]);
+      }
+    };
+    
+    img.src = capturedImage;
+  }, [capturedImage, displayBox, segmentBoxes, tempBox, step, currentDigit, currentSegment, isDrawing]);
+
+  return (
+    <div className="min-h-screen bg-gray-900 p-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+            <Square className="w-8 h-8 text-blue-400" />
+            7-Segment Display Calibration
+          </h1>
+          
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+
+        {/* Progress Steps */}
+        <div className="bg-gray-800 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            {[
+              { num: 1, label: 'Capture' },
+              { num: 2, label: 'Display Box' },
+              { num: 3, label: 'Segments' },
+              { num: 4, label: 'Test' }
+            ].map((s, idx) => (
+              <React.Fragment key={s.num}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                    step > s.num ? 'bg-green-600 text-white' :
+                    step === s.num ? 'bg-blue-600 text-white' :
+                    'bg-gray-700 text-gray-400'
+                  }`}>
+                    {step > s.num ? <Check className="w-5 h-5" /> : s.num}
+                  </div>
+                  <span className={`font-semibold ${step >= s.num ? 'text-white' : 'text-gray-500'}`}>
+                    {s.label}
+                  </span>
+                </div>
+                {idx < 3 && <ArrowRight className="text-gray-600" />}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Step 1: Camera Capture */}
+        {step === 1 && (
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Step 1: Capture Display Image</h2>
+            <p className="text-gray-300 mb-4">
+              Position your camera to clearly show the 3-digit seven-segment display.
+            </p>
+            
+            <div className="mb-4">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="w-full rounded-lg bg-black"
+                style={{ maxHeight: '500px' }}
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              {!videoStream ? (
+                <button
+                  onClick={startCamera}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+                >
+                  <Camera className="w-5 h-5" />
+                  Start Camera
+                </button>
+              ) : (
+                <button
+                  onClick={captureFrame}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+                  Capture Frame
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Draw Display Box */}
+        {step === 2 && capturedImage && (
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Step 2: Draw Display Bounding Box</h2>
+            <p className="text-gray-300 mb-4">
+              Click and drag to draw a box around the entire 3-digit display.
+            </p>
+            
+            <div className="mb-4 relative">
+              <div className="relative inline-block">
+                <img 
+                  src={capturedImage} 
+                  alt="Captured" 
+                  className="max-w-full h-auto rounded-lg"
+                  style={{ maxHeight: '600px' }}
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+                  style={{ pointerEvents: 'auto' }}
+                />
+              </div>
+              
+              {!displayBox && !isDrawing && (
+                <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white px-3 py-1 rounded text-sm">
+                  Click and drag to draw a box
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={goBackStep}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              
+              <button
+                onClick={() => setDisplayBox(null)}
+                disabled={!displayBox}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Redraw Box
+              </button>
+              
+              <button
+                onClick={confirmDisplayBox}
+                disabled={!displayBox || isProcessing}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isProcessing ? 'Processing...' : 'Next: Draw Segments'}
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Draw Segment Boxes */}
+        {step === 3 && capturedImage && (
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Step 3: Draw Segment Boxes</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              {[0, 1, 2].map(digitIdx => (
+                <div key={digitIdx} className={`p-3 rounded-lg ${currentDigit === digitIdx ? 'bg-gray-700' : 'bg-gray-750'}`}>
+                  <div className="font-semibold mb-2" style={{ color: DIGIT_COLORS[digitIdx] }}>
+                    Digit {digitIdx + 1}
+                  </div>
+                  <div className="text-sm text-gray-400">
+                    {segmentBoxes[digitIdx] ? segmentBoxes[digitIdx].filter(s => s).length : 0} / 7 segments
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4 mb-4">
+              <div className="font-semibold text-blue-300 mb-2">
+                Current: Digit {currentDigit + 1} - Segment {SEGMENT_LABELS[currentSegment]}
+              </div>
+              <div className="text-sm text-blue-200">
+                Draw a box around the {SEGMENT_LABELS[currentSegment]} segment
+              </div>
+            </div>
+            
+            <div className="mb-4 relative">
+              <div className="relative inline-block">
+                <img 
+                  src={capturedImage} 
+                  alt="Captured" 
+                  className="max-w-full h-auto rounded-lg"
+                  style={{ maxHeight: '600px' }}
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+                  style={{ pointerEvents: 'auto' }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mb-3">
+              <button
+                onClick={goBackStep}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Display Box
+              </button>
+              
+              <button
+                onClick={goBackSegment}
+                disabled={currentDigit === 0 && currentSegment === 0}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Previous Segment
+              </button>
+              
+              <button
+                onClick={clearCurrentSegment}
+                disabled={!segmentBoxes[currentDigit]?.[currentSegment]}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Clear Current
+              </button>
+              
+              <button
+                onClick={clearAllSegments}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={skipCurrent}
+                disabled={currentDigit === 2 && currentSegment === 6}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+              >
+                Skip
+              </button>
+              
+              <button
+                onClick={completeCalibration}
+                disabled={isProcessing}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isProcessing ? 'Saving...' : 'Complete Calibration'}
+                <Check className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Test Recognition */}
+        {step === 4 && (
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Step 4: Test Recognition</h2>
+            <p className="text-gray-300 mb-4">
+              Calibration complete! Test the recognition on your captured image.
+            </p>
+
+            {recognitionResult ? (
+              <div>
+                <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-6 mb-4">
+                  <div className="text-center">
+                    <div className="text-gray-300 text-sm mb-2">Recognized Number</div>
+                    <div className="text-6xl font-bold text-green-400 mb-2">
+                      {recognitionResult.full_number}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {recognitionResult.is_valid ? '✓ Valid' : '⚠ Contains unknown segments'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  {recognitionResult.digits.map((digit, idx) => (
+                    <div key={idx} className="bg-gray-700 rounded-lg p-4">
+                      <div className="text-center mb-3">
+                        <div className="text-gray-400 text-xs mb-1">Digit {idx + 1}</div>
+                        <div className="text-4xl font-bold" style={{ color: DIGIT_COLORS[idx] }}>
+                          {digit.recognized_digit}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <div>Binary: {digit.binary_code}</div>
+                        <div className="flex justify-between">
+                          {['A','B','C','D','E','F','G'].map((seg, i) => (
+                            <span key={seg} className={digit.segment_states[i] ? 'text-green-400' : 'text-red-400'}>
+                              {seg}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <button
+                  onClick={testRecognition}
+                  disabled={isProcessing}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold text-lg disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+                >
+                  {isProcessing ? 'Testing...' : 'Test Recognition'}
+                  <Eye className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={goBackStep}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Segments
+              </button>
+              
+              <button
+                onClick={reset}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Start Over
+              </button>
+              
+              {onComplete && (
+                <button
+                  onClick={() => onComplete(recognitionResult)}
+                  disabled={!recognitionResult}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
+                >
+                  Use This Calibration
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+    </div>
+  );
+};
+
+export default SevenSegmentCalibration;
