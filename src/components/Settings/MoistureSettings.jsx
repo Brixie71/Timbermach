@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Trash2, Check, X, Eye, Plus, Calendar, ChevronRight } from 'lucide-react';
+import { Settings, Trash2, Check, X, Eye, Plus, Calendar, Edit } from 'lucide-react';
 
 const MoistureSettings = ({ onBack, onEditCalibration }) => {
   const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -11,7 +11,6 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [selectedCalibration, setSelectedCalibration] = useState(null);
 
-  // Load all calibrations on mount
   useEffect(() => {
     loadCalibrations();
   }, []);
@@ -31,7 +30,6 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
       
       setCalibrations(data);
       
-      // Find active calibration
       const active = data.find(cal => cal.is_active);
       setActiveCalibration(active);
       
@@ -57,10 +55,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
       const data = await response.json();
       
       if (data.success) {
-        // Reload calibrations
         await loadCalibrations();
-        
-        // Show success message
         alert('Calibration activated successfully!');
       } else {
         throw new Error(data.message || 'Failed to activate calibration');
@@ -84,7 +79,6 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
       const data = await response.json();
       
       if (data.success) {
-        // Reload calibrations
         await loadCalibrations();
         setShowDeleteConfirm(null);
         alert('Calibration deleted successfully!');
@@ -94,6 +88,13 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
     } catch (err) {
       console.error('Failed to delete calibration:', err);
       alert('Failed to delete calibration: ' + err.message);
+    }
+  };
+
+  const handleEditCalibration = (calibration) => {
+    // Pass calibration data to edit function if provided
+    if (onEditCalibration) {
+      onEditCalibration(calibration);
     }
   };
 
@@ -119,7 +120,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4">
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-5">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
             <button
@@ -141,8 +142,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
           
           {onEditCalibration && (
             <button
-              onClick={onEditCalibration}
-              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+              onClick={() => onEditCalibration()}
+              className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors"
             >
               <Plus className="w-5 h-5" />
               New Calibration
@@ -156,8 +157,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
         
         {/* Error Message */}
         {error && (
-          <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6 flex items-center gap-3">
-            <X className="w-5 h-5" />
+          <div className="bg-red-900/30 border border-red-700 text-red-200 px-5 py-4 rounded-xl mb-6 flex items-center gap-3">
+            <X className="w-5 h-5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -170,7 +171,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
           </div>
         ) : calibrations.length === 0 ? (
           // Empty State
-          <div className="bg-gray-800 rounded-lg p-12 text-center">
+          <div className="bg-gray-800 rounded-2xl p-12 text-center">
             <Settings className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-300 mb-2">
               No Calibrations Found
@@ -180,8 +181,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
             </p>
             {onEditCalibration && (
               <button
-                onClick={onEditCalibration}
-                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold inline-flex items-center gap-2 transition-colors"
+                onClick={() => onEditCalibration()}
+                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-semibold inline-flex items-center gap-2 transition-colors"
               >
                 <Plus className="w-5 h-5" />
                 Create First Calibration
@@ -192,7 +193,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
           <>
             {/* Active Calibration Card */}
             {activeCalibration && (
-              <div className="bg-gradient-to-r from-green-900 to-green-800 rounded-lg p-6 mb-6 border-2 border-green-600">
+              <div className="bg-gradient-to-r from-green-900 to-green-800 rounded-2xl p-6 mb-6 border-2 border-green-600">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -207,9 +208,14 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                         <Calendar className="w-4 h-4" />
                         {formatDate(activeCalibration.created_at)}
                       </span>
-                      <span className="bg-green-700 px-2 py-1 rounded">
+                      <span className="bg-green-700 px-3 py-1 rounded-lg">
                         {activeCalibration.num_digits} Digits
                       </span>
+                      {activeCalibration.has_decimal_point && (
+                        <span className="bg-green-700 px-3 py-1 rounded-lg">
+                          {activeCalibration.decimal_position === 1 ? 'XX.X' : 'X.XX'}
+                        </span>
+                      )}
                     </div>
                     {activeCalibration.notes && (
                       <p className="text-gray-300 mt-3 text-sm">
@@ -217,20 +223,29 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                       </p>
                     )}
                   </div>
-                  <button
-                    onClick={() => viewCalibrationDetails(activeCalibration)}
-                    className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View Details
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEditCalibration(activeCalibration)}
+                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => viewCalibrationDetails(activeCalibration)}
+                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Details
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* All Calibrations List */}
-            <div className="bg-gray-800 rounded-lg overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-700">
+            <div className="bg-gray-800 rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-700">
                 <h2 className="text-xl font-semibold">All Calibrations</h2>
                 <p className="text-sm text-gray-400 mt-1">
                   {calibrations.length} calibration{calibrations.length !== 1 ? 's' : ''} saved
@@ -241,7 +256,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                 {calibrations.map((calibration) => (
                   <div
                     key={calibration.id}
-                    className={`px-6 py-4 hover:bg-gray-750 transition-colors ${
+                    className={`px-6 py-5 hover:bg-gray-750 transition-colors ${
                       calibration.is_active ? 'bg-gray-750' : ''
                     }`}
                   >
@@ -252,7 +267,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                             {calibration.device_name || 'Unnamed Device'}
                           </h3>
                           {calibration.is_active && (
-                            <span className="bg-green-600 text-white text-xs px-2 py-1 rounded font-semibold flex items-center gap-1">
+                            <span className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1">
                               <Check className="w-3 h-3" />
                               Active
                             </span>
@@ -267,6 +282,11 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                           <span>
                             {calibration.num_digits} Digits
                           </span>
+                          {calibration.has_decimal_point && (
+                            <span className="bg-gray-700 px-2 py-1 rounded-lg">
+                              {calibration.decimal_position === 1 ? 'XX.X' : 'X.XX'}
+                            </span>
+                          )}
                           <span className="text-gray-500">
                             ID: {calibration.id}
                           </span>
@@ -281,28 +301,37 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => handleEditCalibration(calibration)}
+                          className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
+                          title="Edit Calibration"
+                        >
+                          <Edit className="w-4 h-4" />
+                          <span className="text-sm font-medium">Edit</span>
+                        </button>
+
+                        <button
                           onClick={() => viewCalibrationDetails(calibration)}
-                          className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                          className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
                           title="View Details"
                         >
                           <Eye className="w-4 h-4" />
-                          <span className="text-sm">Details</span>
+                          <span className="text-sm font-medium">Details</span>
                         </button>
 
                         {!calibration.is_active && (
                           <button
                             onClick={() => setAsActive(calibration.id)}
-                            className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                            className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
                             title="Set as Active"
                           >
                             <Check className="w-4 h-4" />
-                            <span className="text-sm">Activate</span>
+                            <span className="text-sm font-medium">Activate</span>
                           </button>
                         )}
 
                         <button
                           onClick={() => setShowDeleteConfirm(calibration.id)}
-                          className="bg-red-900 hover:bg-red-800 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                          className="bg-red-900 hover:bg-red-800 px-3 py-2 rounded-xl transition-colors"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -319,8 +348,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl max-w-md w-full p-6">
             <h3 className="text-xl font-bold mb-4">Confirm Deletion</h3>
             <p className="text-gray-300 mb-6">
               Are you sure you want to delete this calibration? This action cannot be undone.
@@ -328,13 +357,13 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors"
+                className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2.5 rounded-xl transition-colors font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={() => deleteCalibration(showDeleteConfirm)}
-                className="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-semibold transition-colors"
+                className="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2.5 rounded-xl font-semibold transition-colors"
               >
                 Delete
               </button>
@@ -345,9 +374,9 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
       {/* Details Modal */}
       {selectedCalibration && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gray-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
               <h3 className="text-xl font-bold">Calibration Details</h3>
               <button
                 onClick={closeDetailsModal}
@@ -359,8 +388,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
             <div className="p-6">
               {/* Basic Info */}
-              <div className="bg-gray-750 rounded-lg p-4 mb-6">
-                <h4 className="font-semibold mb-3 text-lg">Basic Information</h4>
+              <div className="bg-gray-750 rounded-xl p-5 mb-6">
+                <h4 className="font-semibold mb-4 text-lg">Basic Information</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-400">Device Name:</span>
@@ -410,8 +439,8 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
               </div>
 
               {/* Display Box */}
-              <div className="bg-gray-750 rounded-lg p-4 mb-6">
-                <h4 className="font-semibold mb-3 text-lg">Display Bounding Box</h4>
+              <div className="bg-gray-750 rounded-xl p-5 mb-6">
+                <h4 className="font-semibold mb-4 text-lg">Display Bounding Box</h4>
                 <div className="grid grid-cols-4 gap-4 text-sm">
                   <div>
                     <span className="text-gray-400">X:</span>
@@ -441,17 +470,17 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
               </div>
 
               {/* Segment Boxes */}
-              <div className="bg-gray-750 rounded-lg p-4">
-                <h4 className="font-semibold mb-3 text-lg">Segment Boxes</h4>
+              <div className="bg-gray-750 rounded-xl p-5">
+                <h4 className="font-semibold mb-4 text-lg">Segment Boxes</h4>
                 <div className="space-y-4">
                   {selectedCalibration.segment_boxes.map((digit, digitIdx) => (
-                    <div key={digitIdx} className="border border-gray-600 rounded-lg p-4">
+                    <div key={digitIdx} className="border border-gray-600 rounded-xl p-4">
                       <h5 className="font-semibold mb-3 text-blue-400">
                         Digit {digitIdx + 1}
                       </h5>
                       <div className="grid grid-cols-7 gap-2 text-xs">
                         {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((seg, segIdx) => (
-                          <div key={segIdx} className="bg-gray-800 rounded p-2">
+                          <div key={segIdx} className="bg-gray-800 rounded-lg p-2">
                             <div className="font-semibold text-gray-400 mb-1">{seg}</div>
                             {digit[segIdx] && (
                               <div className="space-y-1 text-gray-500 font-mono">
@@ -471,13 +500,23 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
               {/* Actions */}
               <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => {
+                    handleEditCalibration(selectedCalibration);
+                    closeDetailsModal();
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Edit className="w-5 h-5" />
+                  Edit Calibration
+                </button>
                 {!selectedCalibration.is_active && (
                   <button
                     onClick={() => {
                       setAsActive(selectedCalibration.id);
                       closeDetailsModal();
                     }}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
+                    className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
                   >
                     <Check className="w-5 h-5" />
                     Set as Active
@@ -485,7 +524,7 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                 )}
                 <button
                   onClick={closeDetailsModal}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-3 rounded-lg font-semibold transition-colors"
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-3 rounded-xl font-semibold transition-colors"
                 >
                   Close
                 </button>

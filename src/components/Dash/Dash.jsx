@@ -1,26 +1,357 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-// View Modal Component
-const ViewModal = ({ isOpen, onClose, data, dataType }) => {
-  if (!isOpen || !data) return null;
-  
-  // Determine ID field name based on data type
-  const getIdField = () => {
-    switch(dataType) {
-      case 'compressive': return 'compressive_id';
-      case 'shear': return 'shear_id';
-      case 'flexure': return 'flexure_id';
-      default: return 'id';
+// ============================================================================
+// STRESS CALCULATION UTILITIES
+// ============================================================================
+
+const StressCalculator = {
+  // Compression: σc = P/A (MPa)
+  calculateCompressiveStress(maxForceKN, areaMM2) {
+    const forceN = maxForceKN * 1000; // Convert kN to N
+    return forceN / areaMM2; // Returns MPa (since N/mm² = MPa)
+  },
+
+  // Shear: τv = V/A (MPa) with double shear handling
+  calculateShearStress(maxForceKN, areaMM2, isDoubleShear = false) {
+    const forceN = maxForceKN * 1000;
+    const shearForce = isDoubleShear ? forceN / 2 : forceN;
+    return shearForce / areaMM2; // Returns MPa
+  },
+
+  // Flexure: f = Mc/I (MPa)
+  calculateFlexuralStress(maxForceKN, widthMM, heightMM, lengthMM) {
+    const forceN = maxForceKN * 1000;
+    
+    // For center-point loading (3-point bending)
+    const M = (forceN * lengthMM) / 4; // Bending moment (N·mm)
+    const c = heightMM / 2; // Distance to neutral axis (mm)
+    const I = (widthMM * Math.pow(heightMM, 3)) / 12; // Moment of inertia (mm⁴)
+    
+    return (M * c) / I; // Returns MPa
+  }
+};
+
+// ============================================================================
+// COMPARISON CARD COMPONENT
+// ============================================================================
+
+const ComparisonCard = ({ testData, referenceData, testType }) => {
+  if (!testData || !referenceData) return null;
+
+  // Calculate experimental stress
+  const calculateExperimentalStress = () => {
+    const maxForce = parseFloat(testData.max_force_load) || 0;
+    const area = parseFloat(testData.area) || 1;
+    const width = parseFloat(testData.width) || 0;
+    const height = parseFloat(testData.height) || 0;
+    const length = parseFloat(testData.length) || 100;
+    
+    switch(testType) {
+      case 'compressive':
+        return StressCalculator.calculateCompressiveStress(maxForce, area);
+        
+      case 'shear':
+        const isDoubleShear = testData.test_type?.toLowerCase().includes('double');
+        return StressCalculator.calculateShearStress(maxForce, area, isDoubleShear);
+        
+      case 'flexure':
+        return StressCalculator.calculateFlexuralStress(maxForce, width, height, length);
+        
+      default:
+        return 0;
     }
   };
+
+  // Get reference value based on test type
+  const getReferenceValue = () => {
+    switch(testType) {
+      case 'compressive':
+        return parseFloat(referenceData.compression_parallel) || 0;
+      case 'shear':
+        return parseFloat(referenceData.shear_parallel) || 0;
+      case 'flexure':
+        return parseFloat(referenceData.bending_tension_parallel) || 0;
+      default:
+        return 0;
+    }
+  };
+
+  const experimentalStress = calculateExperimentalStress();
+  const referenceStress = getReferenceValue();
   
-  // Filter out fields we don't want to display
-  const displayFields = Object.keys(data).filter(key => 
-    !['created_at', 'updated_at'].includes(key)
+  // Calculate metrics
+  const percentageAccuracy = referenceStress > 0 
+    ? ((experimentalStress / referenceStress) * 100).toFixed(2) 
+    : 0;
+  const difference = experimentalStress - referenceStress;
+  const percentageDifference = referenceStress > 0
+    ? (((experimentalStress - referenceStress) / referenceStress) * 100).toFixed(2)
+    : 0;
+
+  // Quality assessment
+  const getQualityStatus = () => {
+    if (referenceStress === 0) {
+      return { 
+        text: 'No Reference', 
+        color: 'gray', 
+        icon: '❓', 
+        bgColor: 'bg-gray-100', 
+        textColor: 'text-gray-700', 
+        borderColor: 'border-gray-300' 
+      };
+    }
+    
+    const ratio = experimentalStress / referenceStress;
+    if (ratio >= 0.9 && ratio <= 1.1) {
+      return { 
+        text: 'Excellent', 
+        color: 'green', 
+        icon: '✅', 
+        bgColor: 'bg-green-100', 
+        textColor: 'text-green-700', 
+        borderColor: 'border-green-300' 
+      };
+    }
+    if (ratio >= 0.8 && ratio <= 1.2) {
+      return { 
+        text: 'Good', 
+        color: 'blue', 
+        icon: '✓', 
+        bgColor: 'bg-blue-100', 
+        textColor: 'text-blue-700', 
+        borderColor: 'border-blue-300' 
+      };
+    }
+    if (ratio >= 0.7 && ratio <= 1.3) {
+      return { 
+        text: 'Fair', 
+        color: 'yellow', 
+        icon: '⚠️', 
+        bgColor: 'bg-yellow-100', 
+        textColor: 'text-yellow-700', 
+        borderColor: 'border-yellow-300' 
+      };
+    }
+    return { 
+      text: 'Below Standard', 
+      color: 'red', 
+      icon: '❌', 
+      bgColor: 'bg-red-100', 
+      textColor: 'text-red-700', 
+      borderColor: 'border-red-300' 
+    };
+  };
+
+  const quality = getQualityStatus();
+
+  // Stress symbols
+  const getStressSymbol = () => {
+    switch(testType) {
+      case 'compressive': return 'σc';
+      case 'shear': return 'τv';
+      case 'flexure': return 'f';
+      default: return 'σ';
+    }
+  };
+
+  const getRefSymbol = () => {
+    switch(testType) {
+      case 'compressive': return 'Fc';
+      case 'shear': return 'Fv';
+      case 'flexure': return 'FbFt';
+      default: return 'F';
+    }
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-lg mt-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            📊 Stress Comparison Analysis
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            {referenceData.common_name} • <span className="italic">{referenceData.botanical_name}</span>
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Strength Group: <span className="font-semibold">{referenceData.strength_group?.replace('_', ' ').toUpperCase()}</span>
+          </p>
+        </div>
+        <div className={`px-4 py-2 rounded-full ${quality.bgColor} border-2 ${quality.borderColor}`}>
+          <span className="text-lg mr-2">{quality.icon}</span>
+          <span className={`text-sm font-bold ${quality.textColor}`}>{quality.text}</span>
+        </div>
+      </div>
+
+      {/* Stress Values */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-200">
+          <div className="text-sm text-gray-500 mb-2">Experimental Stress ({getStressSymbol()})</div>
+          <div className="text-3xl font-bold text-blue-600">{experimentalStress.toFixed(2)}</div>
+          <div className="text-sm text-gray-500 mt-1">MPa</div>
+        </div>
+
+        <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-purple-200">
+          <div className="text-sm text-gray-500 mb-2">Reference Value ({getRefSymbol()})</div>
+          <div className="text-3xl font-bold text-purple-600">{referenceStress.toFixed(2)}</div>
+          <div className="text-sm text-gray-500 mt-1">MPa</div>
+        </div>
+      </div>
+
+      {/* Comparison Metrics */}
+      <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 mb-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">📈 Comparison Metrics</h4>
+        
+        <div className="space-y-3">
+          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+            <span className="text-sm text-gray-600">Accuracy Percentage:</span>
+            <span className="text-lg font-bold text-blue-600">{percentageAccuracy}%</span>
+          </div>
+
+          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+            <span className="text-sm text-gray-600">Difference:</span>
+            <span className={`text-lg font-bold ${difference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {difference >= 0 ? '+' : ''}{difference.toFixed(2)} MPa
+            </span>
+          </div>
+
+          <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+            <span className="text-sm text-gray-600">Percentage Difference:</span>
+            <span className={`text-lg font-bold ${percentageDifference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {percentageDifference >= 0 ? '+' : ''}{percentageDifference}%
+            </span>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Comparison Ratio:</span>
+            <span className="text-lg font-bold text-indigo-600">
+              {referenceStress > 0 ? (experimentalStress / referenceStress).toFixed(3) : 'N/A'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Interpretation */}
+      <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+        <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+          💡 Interpretation
+        </h4>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          {referenceStress === 0 ? (
+            <span className="text-gray-500 italic">No reference value available for comparison.</span>
+          ) : experimentalStress > referenceStress ? (
+            <>
+              The sample is <span className="font-semibold text-green-600">stronger</span> than the reference value by {Math.abs(percentageDifference)}%. 
+              This could indicate low moisture content, high density, or the absence of significant defects.
+            </>
+          ) : experimentalStress < referenceStress ? (
+            <>
+              The sample is <span className="font-semibold text-red-600">weaker</span> than the reference value by {Math.abs(percentageDifference)}%. 
+              This may be due to higher moisture content, presence of defects (knots, splits), or natural variation.
+            </>
+          ) : (
+            <>
+              The sample matches the reference value exactly, indicating typical strength properties for this species.
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* Formula Used */}
+      <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="text-xs text-gray-500">
+          <span className="font-semibold text-gray-700">Formula used:</span>{' '}
+          {testType === 'compressive' && 'σc = P/A (Compressive Stress = Force / Area)'}
+          {testType === 'shear' && 'τv = V/A (Shear Stress = Shear Force / Area)'}
+          {testType === 'flexure' && 'f = Mc/I, where M = FL/4, c = h/2, I = bh³/12 (Flexural Stress)'}
+        </div>
+      </div>
+    </div>
   );
-  
-  // Format field names for better display
+};
+
+// ============================================================================
+// SPECIES SELECTOR COMPONENT
+// ============================================================================
+
+const SpeciesSelector = ({ value, onChange }) => {
+  const [species, setSpecies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const API_URL = 'http://127.0.0.1:8000';
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/reference-values`)
+      .then(res => res.json())
+      .then(data => {
+        setSpecies(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load species:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="text-sm text-gray-500 p-2 flex items-center gap-2">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+        Loading species...
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value ? parseInt(e.target.value) : null)}
+      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+    >
+      <option value="">Select Wood Species</option>
+      {species.map(sp => (
+        <option key={sp.id} value={sp.id}>
+          {sp.common_name} ({sp.botanical_name}) - {sp.strength_group?.replace('_', ' ')}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+// ============================================================================
+// VIEW MODAL WITH COMPARISON
+// ============================================================================
+
+const ViewModalWithComparison = ({ isOpen, onClose, data, dataType }) => {
+  const [referenceData, setReferenceData] = useState(null);
+  const [loadingReference, setLoadingReference] = useState(false);
+  const API_URL = 'http://127.0.0.1:8000';
+
+  useEffect(() => {
+    if (isOpen && data && data.species_id) {
+      setLoadingReference(true);
+      fetch(`${API_URL}/api/reference-values/${data.species_id}`)
+        .then(res => res.json())
+        .then(refData => {
+          setReferenceData(refData);
+          setLoadingReference(false);
+        })
+        .catch(err => {
+          console.error('Failed to load reference data:', err);
+          setLoadingReference(false);
+        });
+    } else {
+      setReferenceData(null);
+    }
+  }, [isOpen, data]);
+
+  if (!isOpen || !data) return null;
+
+  const displayFields = Object.keys(data).filter(key => 
+    !['created_at', 'updated_at', 'species_id'].includes(key)
+  );
+
   const formatFieldName = (fieldName) => {
     return fieldName
       .replace(/_/g, ' ')
@@ -28,12 +359,13 @@ const ViewModal = ({ isOpen, onClose, data, dataType }) => {
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   };
-  
+
   return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300">
-      <div className="bg-white rounded-xl w-full max-w-2xl p-6 shadow-2xl transform transition-all duration-300">
+    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300 p-4">
+      <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+        {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-gray-800">
+          <h3 className="text-2xl font-bold text-gray-800">
             {dataType.charAt(0).toUpperCase() + dataType.slice(1)} Test Details
           </h3>
           <button 
@@ -45,22 +377,47 @@ const ViewModal = ({ isOpen, onClose, data, dataType }) => {
             </svg>
           </button>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {displayFields.map(field => (
-            <div key={field} className="border-b border-gray-100 pb-3">
-              <div className="text-sm text-gray-500 mb-1">{formatFieldName(field)}</div>
-              <div className="font-medium text-gray-800">
-                {data[field] !== null && data[field] !== undefined ? data[field] : '-'}
+
+        {/* Test Data */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <h4 className="font-semibold text-gray-700 mb-4">Test Measurements</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {displayFields.map(field => (
+              <div key={field} className="border-b border-gray-200 pb-3">
+                <div className="text-sm text-gray-500 mb-1">{formatFieldName(field)}</div>
+                <div className="font-medium text-gray-800">
+                  {data[field] !== null && data[field] !== undefined ? data[field] : '-'}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        
+
+        {/* Loading or Comparison Section */}
+        {loadingReference ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <p className="text-gray-600 mt-2">Loading reference data...</p>
+          </div>
+        ) : data.species_id && referenceData ? (
+          <ComparisonCard 
+            testData={data} 
+            referenceData={referenceData} 
+            testType={dataType} 
+          />
+        ) : !data.species_id ? (
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 text-center">
+            <p className="text-yellow-700">
+              ⚠️ No wood species assigned to this test. Please edit the record to select a species for comparison.
+            </p>
+          </div>
+        ) : null}
+
+        {/* Close Button */}
         <div className="flex justify-end mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 bg-gray-100 text-gray-800 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+            className="px-6 py-2.5 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors"
           >
             Close
           </button>
@@ -70,7 +427,11 @@ const ViewModal = ({ isOpen, onClose, data, dataType }) => {
   );
 };
 
-// Responsive Edit Modal Component
+
+// ============================================================================
+// EDIT MODAL (Enhanced with Species Selector)
+// ============================================================================
+
 const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
   const [formData, setFormData] = useState(data || {});
   
@@ -78,7 +439,6 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
     setFormData(data || {});
   }, [data]);
   
-  // Handle body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -86,7 +446,6 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
       document.body.style.overflow = 'auto';
     }
     
-    // Cleanup function to restore scroll when component unmounts
     return () => {
       document.body.style.overflow = 'auto';
     };
@@ -107,7 +466,6 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
     onSave(formData);
   };
   
-  // Determine ID field name based on data type
   const getIdField = () => {
     switch(dataType) {
       case 'compressive': return 'compressive_id';
@@ -117,13 +475,11 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
     }
   };
   
-  // Group fields for better organization
   const groupFields = () => {
     const fields = Object.keys(formData).filter(key => 
-      !['created_at', 'updated_at', getIdField()].includes(key)
+      !['created_at', 'updated_at', getIdField(), 'species_id'].includes(key)
     );
     
-    // Get numeric fields and text fields
     const numericFields = fields.filter(key => 
       ['width', 'height', 'length', 'area', 'moisture_content', 'max_force_load'].includes(key)
     );
@@ -139,7 +495,7 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
   
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-300 p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transform transition-all duration-300">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
         {/* Modal Header */}
         <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
           <h3 className="text-lg sm:text-xl font-bold text-gray-800 truncate">
@@ -148,7 +504,6 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
           <button 
             onClick={onClose} 
             className="text-gray-500 hover:text-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full p-1"
-            aria-label="Close"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -159,6 +514,26 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
         {/* Modal Body with Scrollable Content */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-grow">
           <form id="edit-form" onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Species Selection Section */}
+            <div className="space-y-4 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+              <h4 className="text-sm font-medium text-blue-800 uppercase tracking-wider flex items-center gap-2">
+                🌳 Wood Species Selection
+              </h4>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Select Wood Species for Comparison
+                </label>
+                <SpeciesSelector 
+                  value={formData.species_id} 
+                  onChange={(speciesId) => setFormData({...formData, species_id: speciesId})}
+                />
+                <p className="text-xs text-gray-500 italic">
+                  💡 Selecting a species enables stress comparison against reference values
+                </p>
+              </div>
+            </div>
+
             {/* Text Fields Section */}
             {textFields.length > 0 && (
               <div className="space-y-4">
@@ -197,19 +572,15 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
                         <input
                           id={key}
                           type="number"
+                          step="0.01"
                           name={key}
                           value={formData[key] || ''}
                           onChange={handleChange}
-                          step="0.01"
-                          className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full p-2.5 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                         />
-                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">
-                            {key.includes('area') ? 'mm²' : 
-                             key.includes('moisture') ? '%' : 
-                             key.includes('force') ? 'N' : 'mm'}
-                          </span>
-                        </div>
+                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                          {key.includes('area') ? 'mm²' : key.includes('force') ? 'kN' : key.includes('moisture') ? '%' : 'mm'}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -220,18 +591,18 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
         </div>
         
         {/* Modal Footer */}
-        <div className="flex justify-end gap-3 p-4 sm:p-6 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 sm:p-6 border-t border-gray-200 flex flex-col sm:flex-row gap-3 bg-gray-50">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             form="edit-form"
-            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
           >
             Save Changes
           </button>
@@ -241,7 +612,10 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
   );
 };
 
-// Modern Delete Confirmation Modal
+// ============================================================================
+// DELETE CONFIRMATION MODAL
+// ============================================================================
+
 const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
   if (!isOpen) return null;
   
@@ -277,7 +651,10 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
   );
 };
 
-// Modern DataTable Component
+// ============================================================================
+// DATA TABLE COMPONENT
+// ============================================================================
+
 const DataTable = ({ title, headers, data, onEdit, onDelete, onView }) => {
   // Function to find the ID field in the row data
   const getIdField = (row) => {
@@ -376,7 +753,10 @@ const DataTable = ({ title, headers, data, onEdit, onDelete, onView }) => {
   );
 };
 
-// Modern Dashboard Component
+// ============================================================================
+// MAIN DASHBOARD COMPONENT
+// ============================================================================
+
 const Dash = () => {
   const [compressiveData, setCompressiveData] = useState([]);
   const [shearData, setShearData] = useState([]);
@@ -579,8 +959,6 @@ const Dash = () => {
     }
   };
 
-  // (Previous components remain the same)
-  
   // Modify the mapDataToHeaders function to use actual test_type from the database
   const mapDataToHeaders = (data, headers) => {
     if (!data || data.length === 0) return [];
@@ -608,10 +986,11 @@ const Dash = () => {
         }
       });
       
-      // Important: Preserve original ID fields for editing
+      // Important: Preserve original ID fields and species_id for editing
       if (item.compressive_id !== undefined) mappedItem.compressive_id = item.compressive_id;
       if (item.shear_id !== undefined) mappedItem.shear_id = item.shear_id;
       if (item.flexure_id !== undefined) mappedItem.flexure_id = item.flexure_id;
+      if (item.species_id !== undefined) mappedItem.species_id = item.species_id;
       
       return mappedItem;
     });
@@ -756,15 +1135,15 @@ const Dash = () => {
         </div>
       </div>
 
-      {/* View Modal */}
-      <ViewModal
+      {/* View Modal (Using Enhanced Version with Comparison) */}
+      <ViewModalWithComparison
         isOpen={viewModalOpen}
         onClose={() => setViewModalOpen(false)}
         data={selectedItem}
         dataType={selectedDataType}
       />
 
-      {/* Edit Modal */}
+      {/* Edit Modal (Enhanced with Species Selector) */}
       <EditModal
         isOpen={editModalOpen}
         onClose={() => setEditModalOpen(false)}
@@ -784,4 +1163,4 @@ const Dash = () => {
   );
 };
 
-export default Dash;
+export default Dash; 

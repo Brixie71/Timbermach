@@ -5,12 +5,12 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
   const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
   
   // States
-  const [step, setStep] = useState(1); // 1: Upload, 2: Segment Boxes, 3: Verify
+  const [step, setStep] = useState(1);
   const [capturedImage, setCapturedImage] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [displayBox, setDisplayBox] = useState(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [segmentBoxes, setSegmentBoxes] = useState([[], [], []]); // 3 digits, 7 segments each
+  const [segmentBoxes, setSegmentBoxes] = useState([[], [], []]);
   const [currentDigit, setCurrentDigit] = useState(0);
   const [currentSegment, setCurrentSegment] = useState(0);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -21,7 +21,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
   const [error, setError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasDecimalPoint, setHasDecimalPoint] = useState(false);
-  const [decimalPosition, setDecimalPosition] = useState(1); // 1 = XX.X, 2 = X.XX
+  const [decimalPosition, setDecimalPosition] = useState(1);
   
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
@@ -29,9 +29,8 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
   const imageRef = useRef(null);
   
   const SEGMENT_LABELS = ['A (Top)', 'B (Top-Right)', 'C (Bottom-Right)', 'D (Bottom)', 'E (Bottom-Left)', 'F (Top-Left)', 'G (Middle)'];
-  const DIGIT_COLORS = ['#3b82f6', '#ef4444', '#10b981']; // Blue, Red, Green
+  const DIGIT_COLORS = ['#3b82f6', '#ef4444', '#10b981'];
 
-  // Handle file upload
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -47,7 +46,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = async () => {
-        // Automatically set display box to full image size
         const autoDisplayBox = {
           x: 0,
           y: 0,
@@ -60,7 +58,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
         setCapturedImage(event.target.result);
         setError(null);
         
-        // Automatically generate default segment boxes
         setIsProcessing(true);
         try {
           const response = await fetch(`${API_URL}/seven-segment/create-defaults`, {
@@ -92,7 +89,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     reader.readAsDataURL(file);
   };
 
-  // Retake/reupload photo
   const retakePhoto = () => {
     setCapturedImage(null);
     setUploadedFile(null);
@@ -107,7 +103,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Get canvas coordinates from mouse event
   const getCanvasCoordinates = (e) => {
     const canvas = overlayCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -120,7 +115,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     };
   };
 
-  // Mouse handlers for drawing boxes
   const handleMouseDown = (e) => {
     if (step !== 2) return;
     
@@ -158,7 +152,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
       return;
     }
     
-    // Save segment box
     const newSegmentBoxes = [...segmentBoxes];
     if (!newSegmentBoxes[currentDigit]) {
       newSegmentBoxes[currentDigit] = [];
@@ -167,7 +160,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     setSegmentBoxes(newSegmentBoxes);
     setTempBox(null);
     
-    // Move to next segment
     if (currentSegment < 6) {
       setCurrentSegment(currentSegment + 1);
     } else if (currentDigit < 2) {
@@ -176,7 +168,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Clear current segment box
   const clearCurrentSegment = () => {
     const newSegmentBoxes = [...segmentBoxes];
     if (newSegmentBoxes[currentDigit] && newSegmentBoxes[currentDigit][currentSegment]) {
@@ -185,14 +176,12 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Clear all segment boxes
   const clearAllSegments = () => {
     setSegmentBoxes([[], [], []]);
     setCurrentDigit(0);
     setCurrentSegment(0);
   };
 
-  // Skip to next segment/digit
   const skipCurrent = () => {
     if (currentSegment < 6) {
       setCurrentSegment(currentSegment + 1);
@@ -202,7 +191,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Go back to previous segment/digit
   const goBackSegment = () => {
     if (currentSegment > 0) {
       setCurrentSegment(currentSegment - 1);
@@ -212,7 +200,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Go back to previous step
   const goBackStep = () => {
     if (step === 2) {
       retakePhoto();
@@ -223,13 +210,11 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Complete calibration
   const completeCalibration = async () => {
     setIsProcessing(true);
     setError(null);
     
     try {
-      // Save calibration to Laravel backend
       const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
       
       const response = await fetch(`${LARAVEL_API_URL}/api/calibration`, {
@@ -253,7 +238,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
         throw new Error(data.message || 'Calibration failed');
       }
       
-      // Also send to Python backend
       try {
         await fetch(`${API_URL}/seven-segment/calibrate`, {
           method: 'POST',
@@ -277,7 +261,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Test recognition with debug info
   const testRecognition = async () => {
     setIsProcessing(true);
     setError(null);
@@ -318,7 +301,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Reset
   const reset = () => {
     setStep(1);
     setCapturedImage(null);
@@ -339,7 +321,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     }
   };
 
-  // Draw overlay canvas
   useEffect(() => {
     if (!capturedImage || !overlayCanvasRef.current) return;
     
@@ -353,14 +334,12 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
       
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw display box (full image outline) - subtle
       if (displayBox && step >= 2) {
         ctx.strokeStyle = '#10b981';
         ctx.lineWidth = 2;
         ctx.strokeRect(displayBox.x + 1, displayBox.y + 1, displayBox.width - 2, displayBox.height - 2);
       }
       
-      // Draw segment boxes
       if (step >= 2) {
         segmentBoxes.forEach((digit, digitIdx) => {
           if (digit) {
@@ -384,7 +363,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
         });
       }
       
-      // Draw temp box
       if (tempBox && isDrawing) {
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2;
@@ -398,19 +376,19 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
   }, [capturedImage, displayBox, segmentBoxes, tempBox, step, currentDigit, currentSegment, isDrawing]);
 
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Square className="w-8 h-8 text-blue-400" />
-            7-Segment Display Calibration
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            <Square className="w-7 h-7 text-blue-400" />
+            7-Segment Calibration
           </h1>
           
           {onCancel && (
             <button
               onClick={onCancel}
-              className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+              className="px-5 py-2.5 bg-gray-700 text-white rounded-xl hover:bg-gray-600 transition-colors font-medium"
             >
               Cancel
             </button>
@@ -418,27 +396,27 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
         </div>
 
         {/* Progress Steps */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-6">
-          <div className="flex items-center justify-between">
+        <div className="bg-gray-800 rounded-2xl p-6 mb-8">
+          <div className="flex items-center justify-center gap-8">
             {[
               { num: 1, label: 'Upload' },
               { num: 2, label: 'Segments' },
               { num: 3, label: 'Test' }
             ].map((s, idx) => (
               <React.Fragment key={s.num}>
-                <div className="flex items-center gap-2">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                <div className="flex flex-col items-center gap-2">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
                     step > s.num ? 'bg-green-600 text-white' :
                     step === s.num ? 'bg-blue-600 text-white' :
                     'bg-gray-700 text-gray-400'
                   }`}>
-                    {step > s.num ? <Check className="w-5 h-5" /> : s.num}
+                    {step > s.num ? <Check className="w-6 h-6" /> : s.num}
                   </div>
-                  <span className={`font-semibold ${step >= s.num ? 'text-white' : 'text-gray-500'}`}>
+                  <span className={`text-sm font-medium ${step >= s.num ? 'text-white' : 'text-gray-500'}`}>
                     {s.label}
                   </span>
                 </div>
-                {idx < 2 && <ArrowRight className="text-gray-600" />}
+                {idx < 2 && <div className={`h-0.5 w-16 ${step > s.num + 1 ? 'bg-green-600' : 'bg-gray-700'}`} />}
               </React.Fragment>
             ))}
           </div>
@@ -446,37 +424,37 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
+          <div className="bg-red-900/30 border border-red-700 text-red-200 px-5 py-4 rounded-xl mb-6 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Step 1: Upload Image */}
         {step === 1 && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Step 1: Upload Display Image</h2>
+          <div className="bg-gray-800 rounded-2xl p-8">
+            <h2 className="text-xl font-bold text-white mb-6">Upload Display Image</h2>
 
             {/* Decimal Configuration */}
-            <div className="bg-gray-750 rounded-lg p-4 mb-4 border border-gray-600">
-              <h3 className="text-lg font-semibold text-white mb-3">Display Configuration</h3>
+            <div className="bg-gray-750 rounded-xl p-5 mb-6 border border-gray-600">
+              <h3 className="text-lg font-semibold text-white mb-4">Display Configuration</h3>
               
-              <div className="flex items-center gap-4 mb-3">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="flex items-center gap-4 mb-4">
+                <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={hasDecimalPoint}
                     onChange={(e) => setHasDecimalPoint(e.target.checked)}
                     className="w-5 h-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-white font-medium">Has Decimal Point?</span>
+                  <span className="text-white font-medium">Has Decimal Point</span>
                 </label>
               </div>
 
               {hasDecimalPoint && (
-                <div className="ml-7 space-y-2">
-                  <p className="text-sm text-gray-400 mb-2">Decimal position from right:</p>
-                  <div className="flex gap-3">
+                <div className="ml-8 space-y-3">
+                  <p className="text-sm text-gray-400 mb-3">Decimal position from right:</p>
+                  <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="radio"
@@ -504,11 +482,11 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               )}
             </div>
 
-            <p className="text-gray-300 mb-4">
-              Upload a clear, <strong>cropped</strong> image showing ONLY the 3-digit seven-segment display. The entire image will be used as the display area.
+            <p className="text-gray-300 text-center mb-6">
+              Upload a <strong>cropped image</strong> showing only the 3-digit display
             </p>
             
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-blue-500 transition-colors">
+            <div className="border-2 border-dashed border-gray-600 rounded-2xl p-16 text-center hover:border-blue-500 transition-colors cursor-pointer">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -518,9 +496,9 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                 id="imageUpload"
               />
               <label htmlFor="imageUpload" className="cursor-pointer">
-                <Upload className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                <p className="text-white font-semibold mb-2">Click to upload cropped display image</p>
-                <p className="text-gray-400 text-sm">Image should contain ONLY the 7-segment display</p>
+                <Upload className="w-20 h-20 text-gray-500 mx-auto mb-4" />
+                <p className="text-white font-semibold text-lg mb-2">Click to upload image</p>
+                <p className="text-gray-400">Image should contain only the 7-segment display</p>
               </label>
             </div>
           </div>
@@ -528,29 +506,23 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
 
         {/* Step 2: Draw Segment Boxes */}
         {step === 2 && capturedImage && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Step 2: Draw Segment Boxes</h2>
-            <p className="text-gray-300 mb-2">
-              Draw boxes around each segment. Be precise - each box should tightly fit around just ONE segment.
-            </p>
-            <p className="text-sm text-blue-300 mb-4">
-              ℹ️ Display size: {imageSize.width} × {imageSize.height}px (automatic - using full image)
-            </p>
+          <div className="bg-gray-800 rounded-2xl p-8">
+            <h2 className="text-xl font-bold text-white mb-6">Draw Segment Boxes</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-6">
               {[0, 1, 2].map(digitIdx => (
-                <div key={digitIdx} className={`p-3 rounded-lg ${currentDigit === digitIdx ? 'bg-gray-700 ring-2 ring-blue-500' : 'bg-gray-750'}`}>
-                  <div className="font-semibold mb-2" style={{ color: DIGIT_COLORS[digitIdx] }}>
+                <div key={digitIdx} className={`p-4 rounded-xl transition-all ${currentDigit === digitIdx ? 'bg-gray-700 ring-2 ring-blue-500' : 'bg-gray-750'}`}>
+                  <div className="font-semibold mb-2 text-center" style={{ color: DIGIT_COLORS[digitIdx] }}>
                     Digit {digitIdx + 1}
                   </div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-sm text-gray-400 text-center mb-3">
                     {segmentBoxes[digitIdx] ? segmentBoxes[digitIdx].filter(s => s).length : 0} / 7 segments
                   </div>
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1 justify-center">
                     {['A','B','C','D','E','F','G'].map((seg, idx) => (
                       <span 
                         key={seg}
-                        className={`text-xs px-2 py-1 rounded ${
+                        className={`text-xs px-2 py-1 rounded-lg font-medium ${
                           segmentBoxes[digitIdx]?.[idx] 
                             ? 'bg-green-600 text-white' 
                             : 'bg-gray-600 text-gray-400'
@@ -564,25 +536,22 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               ))}
             </div>
 
-            <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4 mb-4">
+            <div className="bg-blue-900/30 border border-blue-700 rounded-xl p-5 mb-6 text-center">
               <div className="font-semibold text-blue-300 mb-2">
                 Current: Digit {currentDigit + 1} - Segment {SEGMENT_LABELS[currentSegment]}
               </div>
               <div className="text-sm text-blue-200">
-                Draw a tight box around ONLY the {SEGMENT_LABELS[currentSegment]} segment
-              </div>
-              <div className="mt-2 text-xs text-blue-300">
-                💡 Tip: Make boxes as small as possible - they should only cover the lit segment area
+                Draw a tight box around the {SEGMENT_LABELS[currentSegment]} segment
               </div>
             </div>
             
-            <div className="mb-4 relative bg-black rounded-lg overflow-hidden">
+            <div className="mb-6 relative bg-black rounded-2xl overflow-hidden">
               <div className="relative inline-block w-full">
                 <img 
                   src={capturedImage} 
                   alt="Captured" 
                   className="max-w-full h-auto mx-auto"
-                  style={{ maxHeight: '600px' }}
+                  style={{ maxHeight: '500px' }}
                 />
                 <canvas
                   ref={overlayCanvasRef}
@@ -595,10 +564,10 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               </div>
             </div>
 
-            <div className="flex gap-3 mb-3">
+            <div className="flex gap-3 justify-center mb-4">
               <button
                 onClick={goBackStep}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+                className="px-5 py-2.5 bg-gray-700 text-white rounded-xl hover:bg-gray-600 flex items-center gap-2 transition-colors font-medium"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Back
@@ -607,7 +576,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               <button
                 onClick={goBackSegment}
                 disabled={currentDigit === 0 && currentSegment === 0}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2.5 bg-gray-700 text-white rounded-xl hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors font-medium"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Previous
@@ -616,7 +585,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               <button
                 onClick={clearCurrentSegment}
                 disabled={!segmentBoxes[currentDigit]?.[currentSegment]}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2.5 bg-orange-600 text-white rounded-xl hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors font-medium"
               >
                 <RotateCcw className="w-4 h-4" />
                 Clear
@@ -624,18 +593,18 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               
               <button
                 onClick={clearAllSegments}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 flex items-center gap-2 transition-colors font-medium"
               >
                 <Trash2 className="w-4 h-4" />
                 Clear All
               </button>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={skipCurrent}
                 disabled={currentDigit === 2 && currentSegment === 6}
-                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+                className="px-5 py-2.5 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 Skip
               </button>
@@ -643,7 +612,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               <button
                 onClick={completeCalibration}
                 disabled={isProcessing}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
               >
                 {isProcessing ? 'Saving...' : 'Complete Calibration'}
                 <Check className="w-5 h-5" />
@@ -654,22 +623,19 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
 
         {/* Step 3: Test Recognition */}
         {step === 3 && (
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Step 3: Test Recognition</h2>
-            <p className="text-gray-300 mb-4">
-              Calibration complete! Test the recognition on your uploaded image to verify accuracy.
-            </p>
+          <div className="bg-gray-800 rounded-2xl p-8">
+            <h2 className="text-xl font-bold text-white mb-6 text-center">Test Recognition</h2>
 
             {recognitionResult ? (
               <div>
                 <div className={`${
                   recognitionResult.is_valid 
-                    ? 'bg-green-900 border-green-700' 
-                    : 'bg-yellow-900 border-yellow-700'
-                } bg-opacity-30 border rounded-lg p-6 mb-4`}>
+                    ? 'bg-green-900/30 border-green-700' 
+                    : 'bg-yellow-900/30 border-yellow-700'
+                } border rounded-2xl p-8 mb-6`}>
                   <div className="text-center">
-                    <div className="text-gray-300 text-sm mb-2">Recognized Number</div>
-                    <div className={`text-6xl font-bold mb-2 ${
+                    <div className="text-gray-300 text-sm mb-3">Recognized Number</div>
+                    <div className={`text-7xl font-bold mb-3 ${
                       recognitionResult.is_valid ? 'text-green-400' : 'text-yellow-400'
                     }`}>
                       {recognitionResult.full_number}
@@ -680,22 +646,24 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-3 gap-4 mb-6">
                   {recognitionResult.digits.map((digit, idx) => (
-                    <div key={idx} className="bg-gray-700 rounded-lg p-4">
+                    <div key={idx} className="bg-gray-700 rounded-xl p-5">
                       <div className="text-center mb-3">
-                        <div className="text-gray-400 text-xs mb-1">Digit {idx + 1}</div>
-                        <div className="text-4xl font-bold" style={{ color: DIGIT_COLORS[idx] }}>
+                        <div className="text-gray-400 text-xs mb-2">Digit {idx + 1}</div>
+                        <div className="text-5xl font-bold" style={{ color: DIGIT_COLORS[idx] }}>
                           {digit.recognized_digit}
                         </div>
                       </div>
                       <div className="text-xs space-y-2">
-                        <div className="text-gray-400">Binary: <span className="font-mono text-white">{digit.binary_code}</span></div>
+                        <div className="text-gray-400 text-center">
+                          <span className="font-mono text-white">{digit.binary_code}</span>
+                        </div>
                         <div className="grid grid-cols-7 gap-1">
                           {['A','B','C','D','E','F','G'].map((seg, i) => (
                             <div 
                               key={seg}
-                              className={`text-center p-1 rounded text-xs font-bold ${
+                              className={`text-center p-1.5 rounded-lg text-xs font-bold ${
                                 digit.segment_states[i] 
                                   ? 'bg-green-600 text-white' 
                                   : 'bg-red-900 text-red-300'
@@ -711,27 +679,27 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                 </div>
 
                 {debugInfo && (
-                  <details className="bg-gray-750 rounded-lg p-4 mb-4">
+                  <details className="bg-gray-750 rounded-xl p-4 mb-6">
                     <summary className="cursor-pointer text-blue-400 font-semibold mb-2">
                       Debug Information
                     </summary>
-                    <pre className="text-xs text-gray-300 overflow-auto max-h-96 bg-gray-900 p-3 rounded">
+                    <pre className="text-xs text-gray-300 overflow-auto max-h-64 bg-gray-900 p-3 rounded-lg mt-2">
                       {JSON.stringify(debugInfo, null, 2)}
                     </pre>
                   </details>
                 )}
 
                 {recognitionResult.full_number === '888' && (
-                  <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-4">
+                  <div className="bg-yellow-900/30 border border-yellow-700 rounded-xl p-5 mb-6">
                     <div className="flex gap-3">
                       <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
                       <div>
                         <div className="font-semibold text-yellow-300 mb-2">
                           Calibration Issue Detected
                         </div>
-                        <div className="text-yellow-200 text-sm space-y-1">
-                          <p>All segments detected as ON. Segment boxes may be too large or overlap.</p>
-                          <p className="mt-3 font-semibold">💡 Go back and draw smaller, more precise boxes</p>
+                        <div className="text-yellow-200 text-sm">
+                          All segments detected as ON. Boxes may be too large or overlap.
+                          Go back and draw smaller, more precise boxes.
                         </div>
                       </div>
                     </div>
@@ -739,22 +707,22 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                 )}
               </div>
             ) : (
-              <div className="text-center py-8">
+              <div className="text-center py-12">
                 <button
                   onClick={testRecognition}
                   disabled={isProcessing}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold text-lg disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 mx-auto transition-colors"
                 >
                   {isProcessing ? 'Testing...' : 'Test Recognition'}
-                  <Eye className="w-5 h-5" />
+                  <Eye className="w-6 h-6" />
                 </button>
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={goBackStep}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+                className="px-5 py-2.5 bg-gray-700 text-white rounded-xl hover:bg-gray-600 flex items-center gap-2 transition-colors font-medium"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Back
@@ -762,7 +730,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
               
               <button
                 onClick={reset}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2"
+                className="px-5 py-2.5 bg-gray-700 text-white rounded-xl hover:bg-gray-600 flex items-center gap-2 transition-colors font-medium"
               >
                 <Trash2 className="w-4 h-4" />
                 Start Over
@@ -772,7 +740,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                 <button
                   onClick={() => onComplete(recognitionResult)}
                   disabled={!recognitionResult || recognitionResult.full_number === '888'}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
+                  className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Use This Calibration
                 </button>

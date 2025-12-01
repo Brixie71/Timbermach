@@ -5,6 +5,7 @@ import WoodTests from './components/Tests/WoodTests';
 import MoistureSettings from './components/Settings/MoistureSettings';
 import MoistureDebug from './components/Settings/MoistureDebug';
 import SevenSegmentCalibration from './components/Settings/SevenSegmentCalibration';
+import ReferenceValues from './components/Settings/ReferenceValues';
 import Dash from './components/Dash/Dash';
 import Settings from './components/Settings/Settings';
 import './App.css';
@@ -31,6 +32,7 @@ function App() {
           <Settings 
             onNavigateToMoistureSettings={() => setActiveItem('moisture-settings')}
             onNavigateToMoistureTest={() => setActiveItem('moisture-debug')}
+            onNavigateToReferenceValues={() => setActiveItem('reference-values')}
           />
         );
       case 'moisture-settings':
@@ -59,6 +61,8 @@ function App() {
             onCancel={() => setActiveItem('moisture-settings')}
           />
         );
+      case 'reference-values':
+        return <ReferenceValues onBack={() => setActiveItem('settings')} />;
       default:
         return <Dash />;
     }
@@ -76,6 +80,8 @@ function App() {
         return 'Moisture Debug Tool';
       case 'calibration':
         return 'Calibration';
+      case 'reference-values':
+        return 'Reference Values';
       default:
         return 'Dashboard';
     }
