@@ -19,8 +19,16 @@ from edge_detection_utils import (
     convert_to_grayscale
 )
 
-# Import seven-segment OCR utilities (NEW FIXED VERSION)
+# Import seven-segment OCR utilities
 from seven_segment_ocr import SevenSegmentOCR, create_default_segment_boxes
+
+# Import manual measurement utilities
+from manual_measurement_utils import (
+    calculate_calibration_from_distance,
+    calculate_measurements_from_lines,
+    draw_measurement_lines,
+    validate_line_positions
+)
 
 app = Flask(__name__)
 
@@ -77,7 +85,7 @@ try:
 except Exception as e:
     print(f"✗ Tesseract error: {e}")
 
-# Seven-segment OCR instance (with NEW SMART ADAPTIVE detection)
+# Seven-segment OCR instance
 seven_segment_ocr = SevenSegmentOCR()
 
 
@@ -118,46 +126,212 @@ def load_calibration_from_laravel():
         return False
 
 
-def draw_edge_visualization(image, measurement_result, mode):
-    """Draw edge detection visualization"""
-    vis_image = image.copy()
-    if len(vis_image.shape) == 2:
-        vis_image = cv2.cvtColor(vis_image, cv2.COLOR_GRAY2BGR)
-    
-    height, width = vis_image.shape[:2]
-    
-    if mode in ['width', 'length'] and 'scanLine' in measurement_result:
-        scan_y = measurement_result['scanLine']
-        cv2.line(vis_image, (0, scan_y), (width, scan_y), (0, 0, 255), 2)
+# --- MANUAL MEASUREMENT ENDPOINTS ---
+@app.route('/manual-measure/calculate', methods=['POST'])
+def manual_measure_calculate():
+    """
+    Calculate measurements from user-defined line positions
+    ---
+    tags:
+      - Manual Measurement
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: image
+        in: formData
+        type: file
+        required: true
+      - name: widthLine1
+        in: formData
+        type: integer
+        required: true
+      - name: widthLine2
+        in: formData
+        type: integer
+        required: true
+      - name: heightLine1
+        in: formData
+        type: integer
+        required: true
+      - name: heightLine2
+        in: formData
+        type: integer
+        required: true
+      - name: cameraDistance
+        in: formData
+        type: number
+        required: true
+      - name: calibrationFactor
+        in: formData
+        type: number
+        required: false
+    responses:
+      200:
+        description: Measurement calculation successful
+      400:
+        description: Bad request
+    """
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file", "success": False}), 400
         
-        if 'leftEdge' in measurement_result:
-            left_x = int(measurement_result['leftEdge'])
-            cv2.line(vis_image, (left_x, 0), (left_x, height), (0, 255, 0), 3)
+        # READ IMAGE FIRST to get dimensions
+        image_file = request.files['image']
+        image_bytes = image_file.read()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        if 'rightEdge' in measurement_result:
-            right_x = int(measurement_result['rightEdge'])
-            cv2.line(vis_image, (right_x, 0), (right_x, height), (0, 255, 0), 3)
-    
-    if mode in ['height', 'length'] and 'scanLine' in measurement_result:
-        scan_x = measurement_result['scanLine']
-        cv2.line(vis_image, (scan_x, 0), (scan_x, height), (0, 0, 255), 2)
+        if img is None:
+            return jsonify({"error": "Failed to decode image", "success": False}), 400
         
-        if 'topEdge' in measurement_result:
-            top_y = int(measurement_result['topEdge'])
-            cv2.line(vis_image, (0, top_y), (width, top_y), (0, 255, 0), 3)
+        # Get actual image dimensions
+        img_height, img_width = img.shape[:2]
         
-        if 'bottomEdge' in measurement_result:
-            bottom_y = int(measurement_result['bottomEdge'])
-            cv2.line(vis_image, (0, bottom_y), (width, bottom_y), (0, 255, 0), 3)
-    
-    return vis_image
+        # Get line positions
+        width_line1 = int(request.form.get('widthLine1', 0))
+        width_line2 = int(request.form.get('widthLine2', 0))
+        height_line1 = int(request.form.get('heightLine1', 0))
+        height_line2 = int(request.form.get('heightLine2', 0))
+        camera_distance = float(request.form.get('cameraDistance', 300))
+
+        # Calculate calibration factor FIRST (needed for 4-inch limit validation)
+        calibration_factor = calculate_calibration_from_distance(
+            camera_distance, 
+            image_width=img_width
+        )
+        
+        # Validate line positions WITH calibration factor for 4-inch limit check
+        is_valid, error_msg = validate_line_positions(
+            width_line1, width_line2, height_line1, height_line2,
+            img_width, img_height,
+            calibration_factor  # ← ADD THIS 7th PARAMETER
+        )
+        
+        if not is_valid:
+            return jsonify({"error": error_msg, "success": False}), 400
+        
+        # Calculate calibration factor WITH image width
+        calibration_factor = calculate_calibration_from_distance(
+            camera_distance, 
+            image_width=img_width  # <-- ADD THIS PARAMETER
+        )
+        
+        # Calculate measurements
+        measurements = calculate_measurements_from_lines(
+            width_line1, width_line2,
+            height_line1, height_line2,
+            calibration_factor
+        )
+        
+        # Add camera distance and dimensions to result
+        measurements['cameraDistance'] = camera_distance
+        measurements['imageWidth'] = img_width
+        measurements['imageHeight'] = img_height
+        measurements['success'] = True
+        
+        return jsonify(measurements)
+        
+    except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
 
 
-# --- MEASUREMENT ENDPOINT ---
+@app.route('/manual-measure/visualize', methods=['POST'])
+def manual_measure_visualize():
+    """
+    Generate visualization of measurement lines on image
+    ---
+    tags:
+      - Manual Measurement
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: image
+        in: formData
+        type: file
+        required: true
+      - name: widthLine1
+        in: formData
+        type: integer
+        required: true
+      - name: widthLine2
+        in: formData
+        type: integer
+        required: true
+      - name: heightLine1
+        in: formData
+        type: integer
+        required: true
+      - name: heightLine2
+        in: formData
+        type: integer
+        required: true
+      - name: widthMM
+        in: formData
+        type: number
+        required: true
+      - name: heightMM
+        in: formData
+        type: number
+        required: true
+    responses:
+      200:
+        description: Visualization successful
+      400:
+        description: Bad request
+    """
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file", "success": False}), 400
+        
+        # Read image
+        image_file = request.files['image']
+        image_bytes = image_file.read()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            return jsonify({"error": "Failed to decode image", "success": False}), 400
+        
+        # Get line positions and measurements
+        width_line1 = int(request.form.get('widthLine1', 0))
+        width_line2 = int(request.form.get('widthLine2', 0))
+        height_line1 = int(request.form.get('heightLine1', 0))
+        height_line2 = int(request.form.get('heightLine2', 0))
+        width_mm = float(request.form.get('widthMM', 0))
+        height_mm = float(request.form.get('heightMM', 0))
+        
+        # Draw measurement lines
+        vis_image = draw_measurement_lines(
+            img,
+            width_line1, width_line2,
+            height_line1, height_line2,
+            width_mm, height_mm
+        )
+        
+        # Encode to base64
+        _, buffer = cv2.imencode('.png', vis_image)
+        vis_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({
+            "success": True,
+            "visualizedImage": vis_base64
+        })
+        
+    except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
+
+
+# --- ORIGINAL MEASUREMENT ENDPOINT (EDGE DETECTION) ---
 @app.route('/measure', methods=['POST'])
 def measure_wood():
     """
-    Measure wood dimensions from an image
+    Measure wood dimensions from an image using edge detection
     ---
     tags:
       - Measurement
@@ -378,7 +552,6 @@ def calibrate_seven_segment():
         if len(segment_boxes) != 3:
             return jsonify({"error": "Expected 3 digits", "success": False}), 400
         
-        # Get decimal configuration
         has_decimal_point = data.get('hasDecimalPoint', False)
         decimal_position = data.get('decimalPosition', 1)
         
@@ -407,7 +580,7 @@ def calibrate_seven_segment():
         return jsonify({"error": str(e), "success": False}), 500
 
 
-# --- SEVEN-SEGMENT RECOGNIZE (WITH NEW SMART ADAPTIVE DETECTION) ---
+# --- SEVEN-SEGMENT RECOGNIZE ---
 @app.route('/seven-segment/recognize', methods=['POST'])
 def recognize_seven_segment():
     """
@@ -436,7 +609,6 @@ def recognize_seven_segment():
         description: Recognition successful
     """
     try:
-        # Load calibration if not in memory
         if seven_segment_ocr.calibration is None:
             print("⚠️ Loading calibration from Laravel...")
             if not load_calibration_from_laravel():
@@ -446,7 +618,7 @@ def recognize_seven_segment():
                 }), 400
         
         debug_mode = False
-        detection_method = 'smart_adaptive'  # NEW DEFAULT
+        detection_method = 'smart_adaptive'
         
         if 'image' in request.files:
             image_file = request.files['image']
@@ -479,13 +651,9 @@ def recognize_seven_segment():
         if img is None:
             return jsonify({"error": "Failed to decode image", "success": False}), 400
 
-        # Set detection method
         seven_segment_ocr.detection_method = detection_method
-        
-        # Perform recognition with NEW SMART ADAPTIVE algorithm
         result = seven_segment_ocr.recognize_display(img, debug=debug_mode)
         
-        # Convert NumPy types to Python native
         def convert_to_native(obj):
             if isinstance(obj, dict):
                 return {key: convert_to_native(value) for key, value in obj.items()}
@@ -503,7 +671,6 @@ def recognize_seven_segment():
                 return obj
         
         result = convert_to_native(result)
-        
         return jsonify(result)
         
     except Exception as e:
@@ -551,247 +718,6 @@ def get_seven_segment_calibration():
         return jsonify({"error": str(e), "success": False}), 500
 
 
-# --- CREATE DEFAULT BOXES ---
-@app.route('/seven-segment/create-defaults', methods=['POST'])
-def create_default_segments():
-    """
-    Create default segment boxes
-    ---
-    tags:
-      - Seven-Segment OCR
-    consumes:
-      - application/json
-    parameters:
-      - name: body
-        in: body
-        schema:
-          type: object
-          properties:
-            displayBox:
-              type: object
-            numDigits:
-              type: integer
-              default: 3
-    responses:
-      200:
-        description: Default boxes created
-    """
-    try:
-        data = request.get_json()
-        
-        if 'displayBox' not in data:
-            return jsonify({"error": "displayBox required", "success": False}), 400
-        
-        display_box = data['displayBox']
-        num_digits = data.get('numDigits', 3)
-        
-        segment_boxes = create_default_segment_boxes(display_box, num_digits)
-        
-        return jsonify({"success": True, "segmentBoxes": segment_boxes})
-    except Exception as e:
-        return jsonify({"error": str(e), "success": False}), 500
-
-
-# --- DIAGNOSE SEGMENT BRIGHTNESS ---
-@app.route('/seven-segment/diagnose', methods=['POST'])
-def diagnose_seven_segment():
-    """
-    Diagnose segment brightness values to debug detection issues
-    Returns detailed brightness info for each segment
-    ---
-    tags:
-      - Seven-Segment OCR
-    consumes:
-      - multipart/form-data
-    parameters:
-      - name: image
-        in: formData
-        type: file
-        required: true
-    responses:
-      200:
-        description: Diagnostic information
-    """
-    try:
-        if seven_segment_ocr.calibration is None:
-            if not load_calibration_from_laravel():
-                return jsonify({"error": "No calibration found", "success": False}), 400
-        
-        if 'image' in request.files:
-            image_file = request.files['image']
-            image_bytes = image_file.read()
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        elif request.is_json:
-            data = request.get_json()
-            if 'image' not in data:
-                return jsonify({"error": "No image data", "success": False}), 400
-            image_data = data['image']
-            if ',' in image_data:
-                image_data = image_data.split(',')[1]
-            image_bytes = base64.b64decode(image_data)
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        else:
-            return jsonify({"error": "No image provided", "success": False}), 400
-
-        if img is None:
-            return jsonify({"error": "Failed to decode image", "success": False}), 400
-
-        # Extract and preprocess display
-        display_region = seven_segment_ocr.extract_display_region(img, seven_segment_ocr.calibration['display_box'])
-        gray_image = seven_segment_ocr.preprocess_image(display_region)
-        is_inverted = seven_segment_ocr.detect_display_inversion(gray_image)
-        
-        diagnostics = {
-            "display_inverted": is_inverted,
-            "display_mean_brightness": float(np.mean(gray_image)),
-            "display_min": float(np.min(gray_image)),
-            "display_max": float(np.max(gray_image)),
-            "digits": []
-        }
-        
-        segment_labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-        
-        for digit_idx, segment_boxes in enumerate(seven_segment_ocr.calibration['segment_boxes']):
-            digit_info = {
-                "digit_index": digit_idx,
-                "segments": []
-            }
-            
-            for seg_idx, box in enumerate(segment_boxes):
-                # Extract segment ROI
-                x = int(box['x'] - seven_segment_ocr.calibration['display_box']['x'])
-                y = int(box['y'] - seven_segment_ocr.calibration['display_box']['y'])
-                w = int(box['width'])
-                h = int(box['height'])
-                
-                x = max(0, min(x, gray_image.shape[1] - 1))
-                y = max(0, min(y, gray_image.shape[0] - 1))
-                w = max(1, min(w, gray_image.shape[1] - x))
-                h = max(1, min(h, gray_image.shape[0] - y))
-                
-                segment_roi = gray_image[y:y+h, x:x+w]
-                
-                mean_val = float(np.mean(segment_roi))
-                
-                seg_info = {
-                    "label": f"D{digit_idx+1}{segment_labels[seg_idx]}",
-                    "mean": mean_val,
-                    "min": float(np.min(segment_roi)),
-                    "max": float(np.max(segment_roi)),
-                    "median": float(np.median(segment_roi)),
-                    "std": float(np.std(segment_roi)),
-                    "size_pixels": int(segment_roi.size),
-                    "should_be_on_simple": bool(mean_val > 128),  # White segments are ON regardless of inversion
-                    "threshold_used": 128
-                }
-                
-                digit_info["segments"].append(seg_info)
-            
-            diagnostics["digits"].append(digit_info)
-        
-        return jsonify({
-            "success": True,
-            "diagnostics": diagnostics
-        })
-        
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e), "success": False}), 500
-
-
-# --- VISUALIZE SEGMENTS WITH BINARY STATES ---
-@app.route('/seven-segment/visualize', methods=['POST'])
-def visualize_seven_segment():
-    """
-    Visualize segment boxes with binary states (0/1)
-    GREEN box + "1" = Segment ON
-    RED box + "0" = Segment OFF
-    ---
-    tags:
-      - Seven-Segment OCR
-    consumes:
-      - multipart/form-data
-    parameters:
-      - name: image
-        in: formData
-        type: file
-        required: true
-      - name: method
-        in: formData
-        type: string
-        default: simple_threshold
-        enum: [simple_threshold, smart_adaptive]
-    responses:
-      200:
-        description: Visualization image with binary states
-    """
-    try:
-        # Load calibration if needed
-        if seven_segment_ocr.calibration is None:
-            if not load_calibration_from_laravel():
-                return jsonify({
-                    "error": "No calibration found",
-                    "success": False
-                }), 400
-        
-        detection_method = 'simple_threshold'
-        
-        if 'image' in request.files:
-            image_file = request.files['image']
-            image_bytes = image_file.read()
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            detection_method = request.form.get('method', 'simple_threshold')
-            
-        elif request.is_json:
-            data = request.get_json()
-            
-            if 'image' not in data:
-                return jsonify({"error": "No image data", "success": False}), 400
-            
-            image_data = data['image']
-            if ',' in image_data:
-                image_data = image_data.split(',')[1]
-            
-            image_bytes = base64.b64decode(image_data)
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            detection_method = data.get('method', 'simple_threshold')
-        else:
-            return jsonify({"error": "No image provided", "success": False}), 400
-
-        if img is None:
-            return jsonify({"error": "Failed to decode image", "success": False}), 400
-
-        # Set detection method
-        seven_segment_ocr.detection_method = detection_method
-        
-        # Generate visualization with binary states
-        vis_image = seven_segment_ocr.visualize_segments_with_binary(img)
-        
-        # Encode to base64
-        _, buffer = cv2.imencode('.png', vis_image)
-        vis_base64 = base64.b64encode(buffer).decode('utf-8')
-        
-        return jsonify({
-            "success": True,
-            "visualization": vis_base64,
-            "method": detection_method
-        })
-        
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e), "success": False}), 500
-
-
 # --- HEALTH CHECK ---
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -825,19 +751,15 @@ if __name__ == '__main__':
     print(f"Swagger: http://localhost:5000/apidocs")
     print("=" * 60)
     print("\n📋 Endpoints:")
-    print("  POST /measure")
+    print("  POST /measure (Edge Detection)")
+    print("  POST /manual-measure/calculate (Manual Lines)")
+    print("  POST /manual-measure/visualize (Manual Visualization)")
     print("  POST /scan-number")
     print("  POST /calculate-calibration")
     print("  POST /seven-segment/calibrate")
     print("  POST /seven-segment/recognize")
-    print("  POST /seven-segment/visualize  [NEW: Shows 0/1 states]")
     print("  GET  /seven-segment/calibration")
-    print("  POST /seven-segment/create-defaults")
     print("  GET  /health")
-    print("=" * 60)
-    print("\n🎯 Detection Methods:")
-    print("  - simple_threshold: 0x00-0x33=Dark, 0x33-0xFF=Light")
-    print("  - smart_adaptive: Percentile-based (more robust)")
     print("=" * 60)
     
     app.run(debug=True, host='0.0.0.0', port=5000)

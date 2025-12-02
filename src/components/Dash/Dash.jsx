@@ -6,27 +6,23 @@ import axios from 'axios';
 // ============================================================================
 
 const StressCalculator = {
-  // Compression: σc = P/A (MPa)
-  calculateCompressiveStress(maxForceKN, areaMM2) {
-    const forceN = maxForceKN * 1000; // Convert kN to N
-    return forceN / areaMM2; // Returns MPa (since N/mm² = MPa)
+  // Compression: σ = P/A (MPa)
+  calculateCompressiveStress(maxForceN, areaMM2) {
+    return maxForceN / areaMM2; // Returns MPa (N/mm² = MPa)
   },
 
-  // Shear: τv = V/A (MPa) with double shear handling
-  calculateShearStress(maxForceKN, areaMM2, isDoubleShear = false) {
-    const forceN = maxForceKN * 1000;
-    const shearForce = isDoubleShear ? forceN / 2 : forceN;
+  // Shear: τ = F/A or τ = F/2A for double shear (MPa)
+  calculateShearStress(maxForceN, areaMM2, isDoubleShear = false) {
+    const shearForce = isDoubleShear ? maxForceN / 2 : maxForceN;
     return shearForce / areaMM2; // Returns MPa
   },
 
   // Flexure: f = Mc/I (MPa)
-  calculateFlexuralStress(maxForceKN, widthMM, heightMM, lengthMM) {
-    const forceN = maxForceKN * 1000;
-    
+  calculateFlexuralStress(maxForceN, baseMM, heightMM, lengthMM) {
     // For center-point loading (3-point bending)
-    const M = (forceN * lengthMM) / 4; // Bending moment (N·mm)
+    const M = (maxForceN * lengthMM) / 4; // Bending moment (N·mm)
     const c = heightMM / 2; // Distance to neutral axis (mm)
-    const I = (widthMM * Math.pow(heightMM, 3)) / 12; // Moment of inertia (mm⁴)
+    const I = (baseMM * Math.pow(heightMM, 3)) / 12; // Moment of inertia (mm⁴)
     
     return (M * c) / I; // Returns MPa
   }
@@ -41,9 +37,9 @@ const ComparisonCard = ({ testData, referenceData, testType }) => {
 
   // Calculate experimental stress
   const calculateExperimentalStress = () => {
-    const maxForce = parseFloat(testData.max_force_load) || 0;
+    const maxForce = parseFloat(testData.max_force) || 0;
     const area = parseFloat(testData.area) || 1;
-    const width = parseFloat(testData.width) || 0;
+    const base = parseFloat(testData.base) || 0;
     const height = parseFloat(testData.height) || 0;
     const length = parseFloat(testData.length) || 100;
     
@@ -56,7 +52,7 @@ const ComparisonCard = ({ testData, referenceData, testType }) => {
         return StressCalculator.calculateShearStress(maxForce, area, isDoubleShear);
         
       case 'flexure':
-        return StressCalculator.calculateFlexuralStress(maxForce, width, height, length);
+        return StressCalculator.calculateFlexuralStress(maxForce, base, height, length);
         
       default:
         return 0;
@@ -145,25 +141,6 @@ const ComparisonCard = ({ testData, referenceData, testType }) => {
 
   const quality = getQualityStatus();
 
-  // Stress symbols
-  const getStressSymbol = () => {
-    switch(testType) {
-      case 'compressive': return 'σc';
-      case 'shear': return 'τv';
-      case 'flexure': return 'f';
-      default: return 'σ';
-    }
-  };
-
-  const getRefSymbol = () => {
-    switch(testType) {
-      case 'compressive': return 'Fc';
-      case 'shear': return 'Fv';
-      case 'flexure': return 'FbFt';
-      default: return 'F';
-    }
-  };
-
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-lg mt-6">
       {/* Header */}
@@ -188,13 +165,13 @@ const ComparisonCard = ({ testData, referenceData, testType }) => {
       {/* Stress Values */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-200">
-          <div className="text-sm text-gray-500 mb-2">Experimental Stress ({getStressSymbol()})</div>
+          <div className="text-sm text-gray-500 mb-2">Experimental Stress (σ)</div>
           <div className="text-3xl font-bold text-blue-600">{experimentalStress.toFixed(2)}</div>
           <div className="text-sm text-gray-500 mt-1">MPa</div>
         </div>
 
         <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-purple-200">
-          <div className="text-sm text-gray-500 mb-2">Reference Value ({getRefSymbol()})</div>
+          <div className="text-sm text-gray-500 mb-2">Reference Value</div>
           <div className="text-3xl font-bold text-purple-600">{referenceStress.toFixed(2)}</div>
           <div className="text-sm text-gray-500 mt-1">MPa</div>
         </div>
@@ -257,16 +234,6 @@ const ComparisonCard = ({ testData, referenceData, testType }) => {
             </>
           )}
         </p>
-      </div>
-
-      {/* Formula Used */}
-      <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-        <div className="text-xs text-gray-500">
-          <span className="font-semibold text-gray-700">Formula used:</span>{' '}
-          {testType === 'compressive' && 'σc = P/A (Compressive Stress = Force / Area)'}
-          {testType === 'shear' && 'τv = V/A (Shear Stress = Shear Force / Area)'}
-          {testType === 'flexure' && 'f = Mc/I, where M = FL/4, c = h/2, I = bh³/12 (Flexural Stress)'}
-        </div>
       </div>
     </div>
   );
@@ -348,16 +315,55 @@ const ViewModalWithComparison = ({ isOpen, onClose, data, dataType }) => {
 
   if (!isOpen || !data) return null;
 
-  const displayFields = Object.keys(data).filter(key => 
-    !['created_at', 'updated_at', 'species_id'].includes(key)
+  // Define the order of fields to display in the modal
+  const fieldOrder = [
+    'compressive_id', 'shear_id', 'flexure_id',
+    'test_type', 'specimen_name', 'base', 'height', 'length', 
+    'area', 'pressure', 'moisture_content', 'max_force', 'stress'
+  ];
+
+  // Get only the fields that exist in the data
+  const displayFields = fieldOrder.filter(field => 
+    data.hasOwnProperty(field) && !['created_at', 'updated_at', 'species_id', 'photo'].includes(field)
   );
 
   const formatFieldName = (fieldName) => {
-    return fieldName
-      .replace(/_/g, ' ')
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+    // Special formatting for specific fields
+    const specialNames = {
+      'compressive_id': 'Compressive ID',
+      'shear_id': 'Shear ID',
+      'flexure_id': 'Flexure ID',
+      'test_type': 'Test Type',
+      'specimen_name': 'Specimen Name',
+      'max_force': 'Maximum Force (N)',
+      'moisture_content': 'Moisture Content (%)',
+      'base': 'Base (mm)',
+      'height': 'Height (mm)',
+      'length': 'Length (mm)',
+      'area': 'Area (mm²)',
+      'pressure': 'Pressure (N/mm²)',
+      'stress': 'Stress (MPa)'
+    };
+
+    return specialNames[fieldName] || fieldName.replace(/_/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  const formatFieldValue = (key, value) => {
+    if (value === null || value === undefined) return '-';
+    
+    // Format numbers with proper decimals
+    if (['pressure', 'stress', 'max_force', 'moisture_content', 'area', 'base', 'height', 'length'].includes(key)) {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        if (key === 'max_force') return num.toFixed(2);
+        if (key === 'pressure' || key === 'stress') return num.toFixed(2);
+        if (key === 'moisture_content') return num.toFixed(2);
+        if (key === 'area') return num.toFixed(0);
+        return num.toFixed(2);
+      }
+    }
+    
+    return value;
   };
 
   return (
@@ -386,7 +392,7 @@ const ViewModalWithComparison = ({ isOpen, onClose, data, dataType }) => {
               <div key={field} className="border-b border-gray-200 pb-3">
                 <div className="text-sm text-gray-500 mb-1">{formatFieldName(field)}</div>
                 <div className="font-medium text-gray-800">
-                  {data[field] !== null && data[field] !== undefined ? data[field] : '-'}
+                  {formatFieldValue(field, data[field])}
                 </div>
               </div>
             ))}
@@ -477,11 +483,11 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
   
   const groupFields = () => {
     const fields = Object.keys(formData).filter(key => 
-      !['created_at', 'updated_at', getIdField(), 'species_id'].includes(key)
+      !['created_at', 'updated_at', getIdField(), 'species_id', 'pressure', 'stress', 'photo'].includes(key)
     );
     
     const numericFields = fields.filter(key => 
-      ['width', 'height', 'length', 'area', 'moisture_content', 'max_force_load'].includes(key)
+      ['base', 'height', 'length', 'area', 'moisture_content', 'max_force'].includes(key)
     );
     
     const textFields = fields.filter(key => 
@@ -579,7 +585,7 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
                           className="w-full p-2.5 pr-16 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                         />
                         <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-                          {key.includes('area') ? 'mm²' : key.includes('force') ? 'kN' : key.includes('moisture') ? '%' : 'mm'}
+                          {key.includes('area') ? 'mm²' : key.includes('force') ? 'N' : key.includes('moisture') ? '%' : 'mm'}
                         </span>
                       </div>
                     </div>
@@ -587,6 +593,13 @@ const EditModal = ({ isOpen, onClose, data, onSave, dataType }) => {
                 </div>
               </div>
             )}
+
+            {/* Note about auto-calculated fields */}
+            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+              <p className="text-xs text-gray-600">
+                <strong>Note:</strong> Pressure and Stress values are automatically calculated when you save.
+              </p>
+            </div>
           </form>
         </div>
         
@@ -652,11 +665,10 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => {
 };
 
 // ============================================================================
-// DATA TABLE COMPONENT
+// DATA TABLE COMPONENT (Updated with dark header + Pressure and Stress columns)
 // ============================================================================
 
 const DataTable = ({ title, headers, data, onEdit, onDelete, onView }) => {
-  // Function to find the ID field in the row data
   const getIdField = (row) => {
     if (row.compressive_id !== undefined) return 'compressive_id';
     if (row.shear_id !== undefined) return 'shear_id';
@@ -664,16 +676,46 @@ const DataTable = ({ title, headers, data, onEdit, onDelete, onView }) => {
     return 'id';
   };
 
-  // Function to get the ID value from a row
   const getIdValue = (row) => {
     const idField = getIdField(row);
     return row[idField];
   };
 
+  // Format cell values
+  const formatCellValue = (header, value) => {
+    if (value === null || value === undefined || value === '') return '-';
+    
+    const headerLower = header.toLowerCase();
+    
+    // Format numbers with appropriate decimals
+    if (headerLower.includes('pressure') || headerLower.includes('stress')) {
+      const num = parseFloat(value);
+      return !isNaN(num) ? num.toFixed(2) : value;
+    }
+    
+    if (headerLower.includes('force')) {
+      const num = parseFloat(value);
+      return !isNaN(num) ? num.toFixed(0) : value;
+    }
+    
+    if (headerLower.includes('moisture')) {
+      const num = parseFloat(value);
+      return !isNaN(num) ? num.toFixed(2) : value;
+    }
+    
+    if (headerLower.includes('area') || headerLower.includes('base') || headerLower.includes('height') || headerLower.includes('length')) {
+      const num = parseFloat(value);
+      return !isNaN(num) ? num.toFixed(0) : value;
+    }
+    
+    return value;
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8 transition-all duration-300 hover:shadow-lg">
-      <div className="bg-gradient-to-r from-blue-500 to-indigo-600 p-4">
-        <h3 className="text-lg font-semibold text-white">{title}</h3>
+      {/* Dark header matching navigation bar */}
+      <div className="bg-[#2c3e50] p-4">
+        <h3 className="text-lg font-semibold text-gray-200">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
@@ -696,11 +738,15 @@ const DataTable = ({ title, headers, data, onEdit, onDelete, onView }) => {
             {data.length > 0 ? (
               data.map((row, rowIndex) => (
                 <tr key={rowIndex} className="hover:bg-gray-50 transition-colors">
-                  {headers.map((header, cellIndex) => (
-                    <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {row[header.toLowerCase().replace(/ /g, '_')] ?? '-'}
-                    </td>
-                  ))}
+                  {headers.map((header, cellIndex) => {
+                    const key = header.toLowerCase().replace(/ /g, '_');
+                    const value = row[key];
+                    return (
+                      <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {formatCellValue(header, value)}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex gap-3">
                       <button
@@ -775,7 +821,6 @@ const Dash = () => {
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-  // Create a configured axios instance for our API calls
   const apiClient = axios.create({
     baseURL: apiBaseUrl,
     headers: {
@@ -784,20 +829,17 @@ const Dash = () => {
     }
   });
 
-  // Function to fetch all data types
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Fetch all data in parallel with Promise.all
       const [compressiveResponse, shearResponse, flexureResponse] = await Promise.all([
         apiClient.get('api/compressive-data'),
         apiClient.get('api/shear-data'),
         apiClient.get('api/flexure-data')
       ]);
       
-      // Update state with response data
       setCompressiveData(compressiveResponse.data);
       setShearData(shearResponse.data);
       setFlexureData(flexureResponse.data);
@@ -811,26 +853,21 @@ const Dash = () => {
     }
   };
 
-  // Call fetchData when component mounts
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Function to handle view action
   const handleView = (item, dataType) => {
     setSelectedItem(item);
     setSelectedDataType(dataType || activeTab);
     setViewModalOpen(true);
   };
 
-  // Function to handle edit action
   const handleEdit = (item, dataType) => {
-    console.log('Edit item:', item); // Debug log
+    console.log('Edit item:', item);
     
-    // Store reference to original item
     let originalItem = null;
     
-    // Get original item based on data type and ID
     if (dataType === 'compressive') {
       const id = item.compressive_id || item.id;
       originalItem = compressiveData.find(i => i.compressive_id === id);
@@ -842,13 +879,11 @@ const Dash = () => {
       originalItem = flexureData.find(i => i.flexure_id === id);
     }
     
-    // Use original item if found, otherwise use the passed item
     setSelectedItem(originalItem || item);
     setSelectedDataType(dataType || activeTab);
     setEditModalOpen(true);
   };
 
-  // Function to handle delete action
   const handleDelete = (item, id, dataType) => {
     setSelectedItem(item);
     setSelectedItemId(id);
@@ -856,23 +891,18 @@ const Dash = () => {
     setDeleteModalOpen(true);
   };
 
-  // Function to update data
   const handleUpdate = async (updatedData) => {
     try {
-      // Determine the API endpoint based on data type
       const endpoint = `api/${selectedDataType}-data`;
       
-      // Determine the ID field name based on data type
       const idField = selectedDataType === 'compressive' 
         ? 'compressive_id' 
         : selectedDataType === 'shear' 
           ? 'shear_id' 
           : 'flexure_id';
       
-      // Get the ID from the updatedData or from the selectedItem as a fallback
       const id = updatedData[idField] || (selectedItem && selectedItem[idField]);
       
-      // Log the information for debugging
       console.log('Updating with data:', {
         dataType: selectedDataType,
         idField,
@@ -880,21 +910,17 @@ const Dash = () => {
         endpoint: `${endpoint}/${id}`
       });
       
-      // Check if ID is valid before making the request
       if (!id) {
         throw new Error(`Cannot update: Missing ID (${idField}) for ${selectedDataType} data`);
       }
       
-      // Ensure the ID field is in the data we're sending
       const dataToSend = {
         ...updatedData,
         [idField]: id
       };
       
-      // Send update request
       const response = await apiClient.put(`${endpoint}/${id}`, dataToSend);
       
-      // Update local state to reflect changes
       if (selectedDataType === 'compressive') {
         setCompressiveData(prev => 
           prev.map(item => item[idField] === id ? response.data : item)
@@ -909,7 +935,6 @@ const Dash = () => {
         );
       }
       
-      // Close the modal and clear selected item
       setEditModalOpen(false);
       setSelectedItem(null);
       
@@ -917,22 +942,17 @@ const Dash = () => {
     } catch (err) {
       console.error('Error updating data:', err);
       
-      // More user-friendly error message
       const errorMessage = err.response?.data?.message || err.message || 'Unknown error occurred';
       alert(`Failed to update: ${errorMessage}`);
     }
   };
 
-  // Function to perform delete
   const handleConfirmDelete = async () => {
     try {
-      // Determine the API endpoint based on data type
       const endpoint = `api/${selectedDataType}-data`;
       
-      // Send delete request
       await apiClient.delete(`${endpoint}/${selectedItemId}`);
       
-      // Update local state to remove deleted item
       if (selectedDataType === 'compressive') {
         setCompressiveData(prev => 
           prev.filter(item => item.compressive_id !== selectedItemId)
@@ -947,7 +967,6 @@ const Dash = () => {
         );
       }
       
-      // Close the modal and clear selected item
       setDeleteModalOpen(false);
       setSelectedItem(null);
       setSelectedItemId(null);
@@ -959,25 +978,21 @@ const Dash = () => {
     }
   };
 
-  // Modify the mapDataToHeaders function to use actual test_type from the database
   const mapDataToHeaders = (data, headers) => {
     if (!data || data.length === 0) return [];
     
     return data.map(item => {
       const mappedItem = {};
       
-      // For each header, map to the corresponding field in our data
       headers.forEach(header => {
         const key = header.toLowerCase().replace(/ /g, '_');
         
-        // Special handling for ID field to map to the correct primary key
         if (key === 'id') {
           if (item.compressive_id !== undefined) mappedItem[key] = item.compressive_id;
           else if (item.shear_id !== undefined) mappedItem[key] = item.shear_id;
           else if (item.flexure_id !== undefined) mappedItem[key] = item.flexure_id;
           else mappedItem[key] = '-';
         } 
-        // Use the actual test_type from the database
         else if (key === 'test_type') {
           mappedItem[key] = item.test_type || '-';
         }
@@ -986,7 +1001,7 @@ const Dash = () => {
         }
       });
       
-      // Important: Preserve original ID fields and species_id for editing
+      // Preserve original IDs and species_id
       if (item.compressive_id !== undefined) mappedItem.compressive_id = item.compressive_id;
       if (item.shear_id !== undefined) mappedItem.shear_id = item.shear_id;
       if (item.flexure_id !== undefined) mappedItem.flexure_id = item.flexure_id;
@@ -996,7 +1011,6 @@ const Dash = () => {
     });
   };
 
-  // Get a formatted specimen name for the delete confirmation
   const getItemName = () => {
     if (!selectedItem) return "this item";
     
@@ -1006,7 +1020,6 @@ const Dash = () => {
     return `${dataType} data for "${specimenName}" (ID: ${selectedItemId})`;
   };
 
-  // Tab configuration
   const tabs = [
     { id: 'compressive', label: 'Compressive', icon: '🔨' },
     { id: 'shear', label: 'Shear', icon: '✂️' },
@@ -1046,17 +1059,17 @@ const Dash = () => {
     );
   }
 
-  // Map our data to match the headers expected by DataTable component
+  // Updated headers with PRESSURE and STRESS columns included
   const mappedCompressiveData = mapDataToHeaders(compressiveData, [
-    'ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load'
+    'ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress'
   ]);
 
   const mappedShearData = mapDataToHeaders(shearData, [
-    'ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load'
+    'ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress'
   ]);
 
   const mappedFlexureData = mapDataToHeaders(flexureData, [
-    'ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load'
+    'ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress'
   ]);
 
   return (
@@ -1103,7 +1116,7 @@ const Dash = () => {
             {activeTab === 'compressive' && (
               <DataTable
                 title="Compressive Test Results"
-                headers={['ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Length', 'Area', 'Moisture Content', 'Max Force Load']}
+                headers={['ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress']}
                 data={mappedCompressiveData}
                 onView={(item) => handleView(item, 'compressive')}
                 onEdit={(item) => handleEdit(item, 'compressive')}
@@ -1114,7 +1127,7 @@ const Dash = () => {
             {activeTab === 'shear' && (
               <DataTable
                 title="Shear Test Results"
-                headers={['ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load']}
+                headers={['ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress']}
                 data={mappedShearData}
                 onView={(item) => handleView(item, 'shear')}
                 onEdit={(item) => handleEdit(item, 'shear')}
@@ -1125,7 +1138,7 @@ const Dash = () => {
             {activeTab === 'flexure' && (
               <DataTable
                 title="Flexure Test Results"
-                headers={['ID', 'Test Type', 'Specimen Name', 'Width', 'Height', 'Area', 'Moisture Content', 'Max Force Load']}
+                headers={['ID', 'Test Type', 'Specimen Name', 'Base', 'Height', 'Length', 'Area', 'Pressure', 'Moisture Content', 'Maximum Force', 'Stress']}
                 data={mappedFlexureData}
                 onView={(item) => handleView(item, 'flexure')}
                 onEdit={(item) => handleEdit(item, 'flexure')}
@@ -1163,4 +1176,4 @@ const Dash = () => {
   );
 };
 
-export default Dash; 
+export default Dash;

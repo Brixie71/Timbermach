@@ -1,252 +1,340 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, Ruler, Settings, Focus, RefreshCw, Download, Trash2, Sliders, Eye, Check, ArrowRight, Info, Maximize2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Camera, Upload, Ruler, Settings, Download, Trash2, Info, Maximize2, Move, Check, ArrowRight } from 'lucide-react';
 
-const Measurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testType = 'flexure' }) => {
+const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testType = 'flexure' }) => {
   const requiresLength = testType === 'compressive' || testType === 'shear';
   
-  const [topCameraImage, setTopCameraImage] = useState(null);
-  const [sideCameraImage, setSideCameraImage] = useState(null);
-  const [topImageFile, setTopImageFile] = useState(null);
-  const [sideImageFile, setSideImageFile] = useState(null);
-  const [topProcessedImage, setTopProcessedImage] = useState(null);
-  const [sideProcessedImage, setSideProcessedImage] = useState(null);
-  const [topEdgeVisualization, setTopEdgeVisualization] = useState(null);
-  const [sideEdgeVisualization, setSideEdgeVisualization] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [widthResult, setWidthResult] = useState(null);
-  const [heightResult, setHeightResult] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [widthLine1, setWidthLine1] = useState(200);
+  const [widthLine2, setWidthLine2] = useState(1080);
+  const [heightLine1, setHeightLine1] = useState(100);
+  const [heightLine2, setHeightLine2] = useState(620);
+  const [draggingLine, setDraggingLine] = useState(null);
+  const [cameraDistance, setCameraDistance] = useState(300);
+  const [calibrationFactor, setCalibrationFactor] = useState(null);
   const [lengthInput, setLengthInput] = useState('');
   const [finalMeasurement, setFinalMeasurement] = useState(null);
-  const [error, setError] = useState(null);
   const [currentStep, setCurrentStep] = useState(1);
-  const [topPreviewMode, setTopPreviewMode] = useState('original');
-  const [sidePreviewMode, setSidePreviewMode] = useState('original');
-  const [threshold, setThreshold] = useState(240);
-  const [sigma, setSigma] = useState(2.0);
-  const [contrastFactor, setContrastFactor] = useState(1.5);
-  const [useAdaptiveThreshold, setUseAdaptiveThreshold] = useState(false);
-  const [calibrationFactor, setCalibrationFactor] = useState(0.0145503);
-  const [showCalibration, setShowCalibration] = useState(false);
-  const [useCameraCalibration, setUseCameraCalibration] = useState(false);
-  const [cameraDistance, setCameraDistance] = useState(300);
-  const [focalLength, setFocalLength] = useState(50);
-  const [sensorWidth, setSensorWidth] = useState(4.8);
-  const [imageWidth, setImageWidth] = useState(1920);
-  const [referencePixels, setReferencePixels] = useState(100);
-  const [referenceMillimeters, setReferenceMillimeters] = useState(10);
   const [measurementHistory, setMeasurementHistory] = useState([]);
   const [measurementCounter, setMeasurementCounter] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
-  const [showAdjustments, setShowAdjustments] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [configName, setConfigName] = useState('');
-  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [showCalibration, setShowCalibration] = useState(false);
+  const [error, setError] = useState(null);
+  const [visualizedImage, setVisualizedImage] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
-  const topFileInputRef = useRef(null);
-  const sideFileInputRef = useRef(null);
-  const configFileInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const canvasRef = useRef(null);
   const API_URL = 'http://localhost:5000';
+  const visualizationTimeoutRef = useRef(null);
+  
+  // Dynamic image dimensions (will be set from uploaded image)
+  const [imageDimensions, setImageDimensions] = useState({ width: 1280, height: 720 });
+  
+  const SENSOR_WIDTH = 4.8;
+  const FOCAL_LENGTH = 4.0;
   const MAX_WIDTH_MM = 101.6;
   const MAX_HEIGHT_MM = 101.6;
   const MAX_LENGTH_MM = 304.8;
-
-  // Load saved configs from localStorage on mount
+  
   useEffect(() => {
-    const configs = localStorage.getItem('timberMachConfigs');
-    if (configs) {
-      try {
-        setSavedConfigs(JSON.parse(configs));
-      } catch (err) {
-        console.error('Failed to load configs:', err);
-      }
-    }
-  }, []);
-
-  const handleTopCameraUpload = (event) => {
+    const pixelSizeMM = (SENSOR_WIDTH * cameraDistance) / (FOCAL_LENGTH * imageDimensions.width);
+    setCalibrationFactor(pixelSizeMM);
+  }, [cameraDistance, imageDimensions.width]);
+  
+  const handleImageUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    setTopImageFile(file);
+    
+    setImageFile(file);
     setError(null);
+    setVisualizedImage(null);
+    
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        setTopCameraImage(e.target.result);
-        setImageWidth(img.width);
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+        setImageDimensions({ width: imgWidth, height: imgHeight });
+        
+        setWidthLine1(Math.floor(imgWidth * 0.15));
+        setWidthLine2(Math.floor(imgWidth * 0.85));
+        setHeightLine1(Math.floor(imgHeight * 0.15));
+        setHeightLine2(Math.floor(imgHeight * 0.85));
+        
+        setUploadedImage(e.target.result);
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   };
+  
+  const widthPixels = Math.abs(widthLine2 - widthLine1);
+  const heightPixels = Math.abs(heightLine2 - heightLine1);
+  const widthMM = widthPixels * (calibrationFactor || 0);
+  const heightMM = heightPixels * (calibrationFactor || 0);
+  const areaMM2 = widthMM * heightMM;
+  const areaIN2 = areaMM2 / 645.16;
 
-  const handleSideCameraUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    setSideImageFile(file);
-    setError(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => setSideCameraImage(e.target.result);
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
+  // Calculate limit percentages for visual feedback
+  const widthLimitPercent = (widthMM / MAX_WIDTH_MM) * 100;
+  const heightLimitPercent = (heightMM / MAX_HEIGHT_MM) * 100;
+  const widthExceedsLimit = widthMM > MAX_WIDTH_MM;
+  const heightExceedsLimit = heightMM > MAX_HEIGHT_MM;
+  const widthNearLimit = widthLimitPercent > 90 && !widthExceedsLimit;
+  const heightNearLimit = heightLimitPercent > 90 && !heightExceedsLimit;
 
-  const calculateCalibrationFactor = async () => {
-    try {
-      const response = await fetch(`${API_URL}/calculate-calibration`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: useCameraCalibration ? 'camera' : 'manual',
-          cameraDistance: useCameraCalibration ? cameraDistance : undefined,
-          focalLength: useCameraCalibration ? focalLength : undefined,
-          sensorWidth: useCameraCalibration ? sensorWidth : undefined,
-          imageWidth: useCameraCalibration ? imageWidth : undefined,
-          referencePixels: !useCameraCalibration ? referencePixels : undefined,
-          referenceMillimeters: !useCameraCalibration ? referenceMillimeters : undefined,
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setCalibrationFactor(data.calibrationFactor);
-        setShowCalibration(false);
-      } else {
-        setError(data.error || 'Calibration failed');
+  
+  // DEBOUNCED visualization call - only fires 300ms after user stops dragging
+  const sendToBackendForVisualization = useCallback(async () => {
+    if (!imageFile) return;
+    if (draggingLine) return; // ← ADD THIS LINE
+    
+    // Clear any pending visualization calls
+    if (visualizationTimeoutRef.current) {
+      clearTimeout(visualizationTimeoutRef.current);
+    }
+    
+    // Wait 300ms before making the API call
+    visualizationTimeoutRef.current = setTimeout(async () => {
+      try {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('widthLine1', widthLine1);
+        formData.append('widthLine2', widthLine2);
+        formData.append('heightLine1', heightLine1);
+        formData.append('heightLine2', heightLine2);
+        formData.append('widthMM', widthMM.toFixed(2));
+        formData.append('heightMM', heightMM.toFixed(2));
+        
+        const response = await fetch(`${API_URL}/manual-measure/visualize`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        const data = await response.json();
+        if (data.success && data.visualizedImage) {
+          setVisualizedImage('data:image/png;base64,' + data.visualizedImage);
+        }
+      } catch (err) {
+        // Silently ignore errors during visualization (non-critical)
+        console.log('Visualization skipped (lines may be in invalid position)');
       }
-    } catch (err) {
-      setError('Failed to calculate calibration: ' + err.message);
+    }, 300);
+  }, [imageFile, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM]);
+  
+  // Trigger debounced visualization when lines change
+  useEffect(() => {
+    if (uploadedImage && !draggingLine) {
+      sendToBackendForVisualization();
+    }
+  }, [widthLine1, widthLine2, heightLine1, heightLine2, uploadedImage, draggingLine]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (visualizationTimeoutRef.current) {
+        clearTimeout(visualizationTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  const drawLines = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !uploadedImage) return;
+    
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      canvas.width = imageDimensions.width;
+      canvas.height = imageDimensions.height;
+      
+      ctx.drawImage(img, 0, 0, imageDimensions.width, imageDimensions.height);
+      
+      ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(widthLine1, 0);
+      ctx.lineTo(widthLine1, imageDimensions.height);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(widthLine2, 0);
+      ctx.lineTo(widthLine2, imageDimensions.height);
+      ctx.stroke();
+      
+      ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+      ctx.beginPath();
+      ctx.arc(widthLine1, imageDimensions.height / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(widthLine2, imageDimensions.height / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, heightLine1);
+      ctx.lineTo(imageDimensions.width, heightLine1);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(0, heightLine2);
+      ctx.lineTo(imageDimensions.width, heightLine2);
+      ctx.stroke();
+      
+      ctx.fillStyle = 'rgba(0, 255, 0, 1)';
+      ctx.beginPath();
+      ctx.arc(imageDimensions.width / 2, heightLine1, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(imageDimensions.width / 2, heightLine2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      
+      const widthLabelY = 30;
+      const widthLabelX = (widthLine1 + widthLine2) / 2;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(widthLabelX - 80, widthLabelY - 20, 160, 30);
+      ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Width: ${widthMM.toFixed(2)} mm`, widthLabelX, widthLabelY);
+      
+      const heightLabelX = imageDimensions.width - 100;
+      const heightLabelY = (heightLine1 + heightLine2) / 2;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(heightLabelX - 80, heightLabelY - 15, 160, 30);
+      ctx.fillStyle = 'rgba(0, 255, 0, 1)';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Height: ${heightMM.toFixed(2)} mm`, heightLabelX, heightLabelY);
+    };
+    
+    img.src = uploadedImage;
+  };
+  
+  useEffect(() => {
+    drawLines();
+  }, [uploadedImage, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM]);
+  
+  const handleMouseDown = (e) => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = imageDimensions.width / rect.width;
+    const scaleY = imageDimensions.height / rect.height;
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    
+    const threshold = 20;
+    
+    if (Math.abs(x - widthLine1) < threshold) setDraggingLine('widthLine1');
+    else if (Math.abs(x - widthLine2) < threshold) setDraggingLine('widthLine2');
+    else if (Math.abs(y - heightLine1) < threshold) setDraggingLine('heightLine1');
+    else if (Math.abs(y - heightLine2) < threshold) setDraggingLine('heightLine2');
+  };
+  
+  const handleMouseMove = (e) => {
+    if (!draggingLine || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = imageDimensions.width / rect.width;
+    const scaleY = imageDimensions.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    if (draggingLine === 'widthLine1') {
+      setWidthLine1(Math.max(0, Math.min(x, imageDimensions.width)));
+    } else if (draggingLine === 'widthLine2') {
+      setWidthLine2(Math.max(0, Math.min(x, imageDimensions.width)));
+    } else if (draggingLine === 'heightLine1') {
+      setHeightLine1(Math.max(0, Math.min(y, imageDimensions.height)));
+    } else if (draggingLine === 'heightLine2') {
+      setHeightLine2(Math.max(0, Math.min(y, imageDimensions.height)));
     }
   };
-
-  const previewEdgeDetection = async (imageFile, mode, setProcessedImg, setEdgeVis) => {
-    if (!imageFile) return;
+  
+  const handleMouseUp = () => {
+    setDraggingLine(null);
+  };
+  
+  const performMeasurement = async () => {
+    if (!imageFile) {
+      setError('Please upload an image');
+      return;
+    }
+    
+    if (requiresLength && (!lengthInput || parseFloat(lengthInput) <= 0)) {
+      setError('Please enter valid length');
+      return;
+    }
+    
+    if (requiresLength && parseFloat(lengthInput) * 25.4 > MAX_LENGTH_MM) {
+      setError('Length exceeds 12 inches');
+      return;
+    }
+    
+    if (widthMM > MAX_WIDTH_MM) {
+      setError('Width exceeds 4 inches');
+      return;
+    }
+    
+    if (heightMM > MAX_HEIGHT_MM) {
+      setError('Height exceeds 4 inches');
+      return;
+    }
+    
+    setIsProcessing(true);
+    setError(null);
+    
     try {
       const formData = new FormData();
       formData.append('image', imageFile);
-      formData.append('mode', mode);
-      formData.append('calibrationFactor', calibrationFactor);
-      formData.append('threshold', threshold);
-      formData.append('sigma', sigma);
-      formData.append('contrastFactor', contrastFactor);
-      formData.append('useAdaptiveThreshold', useAdaptiveThreshold);
-      formData.append('returnProcessedImages', 'true');
-      const response = await fetch(`${API_URL}/measure`, { method: 'POST', body: formData });
-      const data = await response.json();
-      if (data.success) {
-        if (data.processedImageBase64) setProcessedImg('data:image/png;base64,' + data.processedImageBase64);
-        if (data.edgeVisualizationBase64) setEdgeVis('data:image/png;base64,' + data.edgeVisualizationBase64);
-      }
-    } catch (err) {
-      console.error('Preview error:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (!topImageFile) return;
-    const timeoutId = setTimeout(() => previewEdgeDetection(topImageFile, 'width', setTopProcessedImage, setTopEdgeVisualization), 500);
-    return () => clearTimeout(timeoutId);
-  }, [threshold, sigma, contrastFactor, useAdaptiveThreshold, topImageFile]);
-
-  useEffect(() => {
-    if (!sideImageFile) return;
-    const timeoutId = setTimeout(() => previewEdgeDetection(sideImageFile, 'height', setSideProcessedImage, setSideEdgeVisualization), 500);
-    return () => clearTimeout(timeoutId);
-  }, [threshold, sigma, contrastFactor, useAdaptiveThreshold, sideImageFile]);
-
-  const performMeasurement = async () => {
-    if (!topImageFile || !sideImageFile) {
-      setError('Please upload both top and side camera images');
-      return;
-    }
-    if (requiresLength && (!lengthInput || parseFloat(lengthInput) <= 0)) {
-      setError('Please enter valid length (required for Compressive/Shear)');
-      return;
-    }
-    if (requiresLength && parseFloat(lengthInput) * 25.4 > MAX_LENGTH_MM) {
-      setError('Length exceeds 12 inches limit');
-      return;
-    }
-    setIsProcessing(true);
-    setError(null);
-    try {
-      const topFormData = new FormData();
-      topFormData.append('image', topImageFile);
-      topFormData.append('mode', 'width');
-      topFormData.append('calibrationFactor', calibrationFactor);
-      topFormData.append('threshold', threshold);
-      topFormData.append('sigma', sigma);
-      topFormData.append('contrastFactor', contrastFactor);
-      topFormData.append('useAdaptiveThreshold', useAdaptiveThreshold);
-      topFormData.append('returnProcessedImages', 'true');
-      const topResponse = await fetch(`${API_URL}/measure`, { method: 'POST', body: topFormData });
-      const topData = await topResponse.json();
-      if (!topData.success) {
-        setError('Width measurement failed: ' + (topData.error || 'Unknown'));
-        setIsProcessing(false);
-        return;
-      }
-      if (topData.millimeterMeasurement > MAX_WIDTH_MM) {
-        setError('Width exceeds 4 inches');
-        setIsProcessing(false);
-        return;
-      }
-      const sideFormData = new FormData();
-      sideFormData.append('image', sideImageFile);
-      sideFormData.append('mode', 'height');
-      sideFormData.append('calibrationFactor', calibrationFactor);
-      sideFormData.append('threshold', threshold);
-      sideFormData.append('sigma', sigma);
-      sideFormData.append('contrastFactor', contrastFactor);
-      sideFormData.append('useAdaptiveThreshold', useAdaptiveThreshold);
-      sideFormData.append('returnProcessedImages', 'true');
-      const sideResponse = await fetch(`${API_URL}/measure`, { method: 'POST', body: sideFormData });
-      const sideData = await sideResponse.json();
-      if (!sideData.success) {
-        setError('Height measurement failed: ' + (sideData.error || 'Unknown'));
-        setIsProcessing(false);
-        return;
-      }
-      if (sideData.millimeterMeasurement > MAX_HEIGHT_MM) {
-        setError('Height exceeds 4 inches');
-        setIsProcessing(false);
-        return;
-      }
-
-      // Calculate Area from Width × Height
-      const widthMM = topData.millimeterMeasurement;
-      const heightMM = sideData.millimeterMeasurement;
-      const widthPixels = topData.pixelMeasurement;
-      const heightPixels = sideData.pixelMeasurement;
+      formData.append('widthLine1', widthLine1);
+      formData.append('widthLine2', widthLine2);
+      formData.append('heightLine1', heightLine1);
+      formData.append('heightLine2', heightLine2);
+      formData.append('cameraDistance', cameraDistance);
       
-      const areaPixels = widthPixels * heightPixels;
-      const areaMM2 = widthMM * heightMM;
-      const areaIN2 = areaMM2 / 645.16; // Convert mm² to in²
-
+      const response = await fetch(`${API_URL}/manual-measure/calculate`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        setError(data.error || 'Measurement failed');
+        setIsProcessing(false);
+        return;
+      }
+      
       const newMeasurement = {
         id: measurementCounter + 1,
         timestamp: new Date(),
         testType: testType,
-        widthPixels: widthPixels,
-        heightPixels: heightPixels,
-        width: widthMM,
-        height: heightMM,
-        areaPixels: areaPixels,
-        areaMM2: areaMM2,
-        areaIN2: areaIN2,
-        widthInches: (widthMM / 25.4).toFixed(3),
-        heightInches: (heightMM / 25.4).toFixed(3),
-        widthQuality: topData.edgeQuality,
-        heightQuality: sideData.edgeQuality,
-        calibrationFactor,
+        widthPixels: data.widthPixels,
+        heightPixels: data.heightPixels,
+        width: data.widthMM,
+        height: data.heightMM,
+        areaMM2: data.areaMM2,
+        areaIN2: data.areaIN2,
+        widthInches: data.widthInches,
+        heightInches: data.heightInches,
+        calibrationFactor: data.calibrationFactor,
+        cameraDistance: cameraDistance,
       };
       
       if (requiresLength) {
         const lengthMM = parseFloat(lengthInput) * 25.4;
         newMeasurement.length = lengthMM;
         newMeasurement.lengthInches = parseFloat(lengthInput).toFixed(3);
-        newMeasurement.volume = widthMM * heightMM * lengthMM;
+        newMeasurement.volume = data.widthMM * data.heightMM * lengthMM;
         newMeasurement.volumeInches = newMeasurement.volume / 16387.064;
       }
       
@@ -254,29 +342,25 @@ const Measurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testTyp
       setMeasurementHistory(prev => [...prev, newMeasurement]);
       setMeasurementCounter(prev => prev + 1);
       setCurrentStep(2);
+      setIsProcessing(false);
       
-      if (topData.processedImageBase64) setTopProcessedImage('data:image/png;base64,' + topData.processedImageBase64);
-      if (topData.edgeVisualizationBase64) setTopEdgeVisualization('data:image/png;base64,' + topData.edgeVisualizationBase64);
-      if (sideData.processedImageBase64) setSideProcessedImage('data:image/png;base64,' + sideData.processedImageBase64);
-      if (sideData.edgeVisualizationBase64) setSideEdgeVisualization('data:image/png;base64,' + sideData.edgeVisualizationBase64);
     } catch (err) {
       setError('Failed: ' + err.message);
-    } finally {
       setIsProcessing(false);
     }
   };
-
+  
   const exportMeasurements = () => {
     if (measurementHistory.length === 0) return;
     const headers = requiresLength 
-      ? ['ID','Time','Type','W(mm)','H(mm)','Area(mm²)','Area(in²)','L(mm)','Vol(mm³)','Vol(in³)','W_Quality','H_Quality']
-      : ['ID','Time','Type','W(mm)','H(mm)','Area(mm²)','Area(in²)','W_Quality','H_Quality'];
+      ? ['ID','Time','Type','W(mm)','H(mm)','Area(mm²)','Area(in²)','L(mm)','Vol(mm³)','Vol(in³)']
+      : ['ID','Time','Type','W(mm)','H(mm)','Area(mm²)','Area(in²)'];
     const rows = measurementHistory.map(m => {
       const base = [m.id, m.timestamp.toISOString(), m.testType, m.width.toFixed(2), m.height.toFixed(2), m.areaMM2.toFixed(2), m.areaIN2.toFixed(3)];
       if (requiresLength && m.length) {
-        return [...base, m.length.toFixed(2), m.volume.toFixed(2), m.volumeInches.toFixed(3), m.widthQuality, m.heightQuality];
+        return [...base, m.length.toFixed(2), m.volume.toFixed(2), m.volumeInches.toFixed(3)];
       }
-      return [...base, m.widthQuality, m.heightQuality];
+      return base;
     });
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -289,31 +373,25 @@ const Measurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testTyp
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  const getCurrentPreviewImage = (mode, original, processed, edges) => {
-    if (mode === 'grayscale') return processed || original;
-    if (mode === 'edges') return edges || original;
-    return original;
-  };
-
+  
   const startNewMeasurement = () => {
     setCurrentStep(1);
-    setTopCameraImage(null);
-    setSideCameraImage(null);
-    setTopImageFile(null);
-    setSideImageFile(null);
+    setUploadedImage(null);
+    setImageFile(null);
     setLengthInput('');
     setFinalMeasurement(null);
     setError(null);
+    setVisualizedImage(null);
   };
-
+  
   return (
     <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900">
       <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
         <button type="button" onClick={onPreviousTest} className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 hover:text-blue-400 transition-colors">←</button>
-        <span className="ml-4 text-gray-100 text-lg font-semibold">TimberMach | Dual-Camera ({testType.charAt(0).toUpperCase() + testType.slice(1)})</span>
+        <span className="ml-4 text-gray-100 text-lg font-semibold">TimberMach | Manual Lines ({testType.charAt(0).toUpperCase() + testType.slice(1)})</span>
         <button type="button" onClick={onMainPageReturn} className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 ml-auto hover:text-red-500 transition-colors">✕</button>
       </div>
+      
       <div className="mt-12 flex-grow overflow-auto p-4">
         <div className="max-w-7xl mx-auto">
           <div className="bg-gray-800 rounded-lg p-4 mb-4">
@@ -329,57 +407,186 @@ const Measurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testTyp
               </div>
             </div>
           </div>
+          
           {currentStep === 1 && (
             <>
               <div className="bg-gray-800 rounded-lg p-4 mb-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div><label className="block text-sm font-medium text-gray-300 mb-2"><Focus className="w-4 h-4 inline mr-2" />Calibration</label><div className="text-white text-sm bg-gray-700 px-3 py-2 rounded-lg">{calibrationFactor.toFixed(6)} mm/px</div></div>
-                  {requiresLength && (<div><label className="block text-sm font-medium text-gray-300 mb-2"><Ruler className="w-4 h-4 inline mr-2" />Length (in, max 12")</label><input type="number" step="0.001" max="12" value={lengthInput} onChange={(e) => setLengthInput(e.target.value)} placeholder="Enter length" className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500" /></div>)}
-                  <div className="flex items-end gap-2"><button type="button" onClick={() => setShowCalibration(true)} className="flex-1 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center"><Settings className="w-4 h-4 mr-1" />Calibrate</button><button type="button" onClick={() => setShowAdjustments(!showAdjustments)} className={`flex-1 px-3 py-2 text-white rounded-lg transition-colors flex items-center justify-center ${showAdjustments ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-600 hover:bg-gray-700'}`}><Sliders className="w-4 h-4 mr-1" />Adjust</button></div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2"><Ruler className="w-4 h-4 inline mr-2" />Camera Distance (mm)</label>
+                    <input 
+                        type="number" 
+                        step="10" 
+                        value={cameraDistance || ''} 
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setCameraDistance(isNaN(val) ? 300 : val);
+                        }}
+                        className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
+                      />
+                    <div className="text-xs text-gray-400 mt-1">Distance from camera to wood surface</div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Calibration Factor</label>
+                    <div className="text-white text-sm bg-gray-700 px-3 py-2 rounded-lg">{calibrationFactor ? calibrationFactor.toFixed(6) : '0.000000'} mm/px</div>
+                    <div className="text-xs text-gray-400 mt-1">Auto-calculated from distance</div>
+                  </div>
+                  {requiresLength && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2"><Ruler className="w-4 h-4 inline mr-2" />Length (in, max 12")</label>
+                      <input type="number" step="0.001" max="12" value={lengthInput} onChange={(e) => setLengthInput(e.target.value)} placeholder="Enter length" className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500" />
+                    </div>
+                  )}
                 </div>
-                {showAdjustments && (<div className="bg-gray-700 rounded-lg p-4 mb-4"><h4 className="text-white font-semibold mb-3 flex items-center"><Sliders className="w-4 h-4 mr-2" />Image Processing<span className="ml-3 text-xs text-green-400 font-normal">⚡ Live Preview</span></h4><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label className="block text-sm font-medium text-gray-300 mb-2">Threshold: {threshold}</label><input type="range" min="180" max="250" value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value))} disabled={!topImageFile && !sideImageFile} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb disabled:opacity-50" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Smoothing: {sigma.toFixed(1)}</label><input type="range" min="0.5" max="3.0" step="0.1" value={sigma} onChange={(e) => setSigma(parseFloat(e.target.value))} disabled={!topImageFile && !sideImageFile} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb disabled:opacity-50" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Contrast: {contrastFactor.toFixed(1)}</label><input type="range" min="1.0" max="2.5" step="0.1" value={contrastFactor} onChange={(e) => setContrastFactor(parseFloat(e.target.value))} disabled={!topImageFile && !sideImageFile} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb disabled:opacity-50" /></div></div><div className="mt-4"><label className="flex items-center text-white"><input type="checkbox" checked={useAdaptiveThreshold} onChange={(e) => setUseAdaptiveThreshold(e.target.checked)} disabled={!topImageFile && !sideImageFile} className="mr-2 w-4 h-4 disabled:opacity-50" /><span className="text-sm">Adaptive Thresholding</span></label></div><div className="mt-3 flex justify-end"><button type="button" onClick={() => { setThreshold(240); setSigma(2.0); setContrastFactor(1.5); setUseAdaptiveThreshold(false); }} className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-500">Reset</button></div></div>)}
+                
                 <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-3 mb-4">
                   <div className="text-sm text-blue-200">
-                    <strong className="flex items-center"><Info className="w-4 h-4 mr-2" />{testType.charAt(0).toUpperCase() + testType.slice(1)} Test</strong>
-                    <div className="mt-2 grid grid-cols-3 gap-4">
-                      <div><div className="font-semibold text-blue-300">Top Camera → Width</div><div className="text-xs">Max 4" (101.6mm)</div></div>
-                      <div><div className="font-semibold text-blue-300">Side Camera → Height</div><div className="text-xs">Max 4" (101.6mm)</div></div>
-                      <div><div className="font-semibold text-green-300 flex items-center"><Maximize2 className="w-3 h-3 mr-1" />Auto Area = W × H</div><div className="text-xs">Calculated automatically</div></div>
+                    <strong className="flex items-center"><Info className="w-4 h-4 mr-2" />Manual Line Measurement</strong>
+                    <div className="mt-2 text-xs">
+                      1. Upload wood base image (any resolution)<br />
+                      2. Set camera distance in mm<br />
+                      3. Drag RED lines to match wood width edges<br />
+                      4. Drag GREEN lines to match wood height edges<br />
+                      5. View real-time measurements
                     </div>
-                    {requiresLength ? (<div className="mt-2 text-xs text-yellow-300">⚠️ Length required (max 12") → Volume = W × H × L</div>) : (<div className="mt-2 text-xs text-green-300">✓ Length not required for {testType}</div>)}
                   </div>
                 </div>
-                <button type="button" onClick={performMeasurement} disabled={!topImageFile || !sideImageFile || (requiresLength && !lengthInput) || isProcessing} className={`w-full px-6 py-3 rounded-lg font-semibold transition-colors ${!topImageFile || !sideImageFile || (requiresLength && !lengthInput) || isProcessing ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>{isProcessing ? (<span className="flex items-center justify-center"><RefreshCw className="w-5 h-5 mr-2 animate-spin" />Processing...</span>) : ('Perform Measurement')}</button>
+                
+                <button type="button" onClick={performMeasurement} disabled={!uploadedImage || isProcessing} className={`w-full px-6 py-3 rounded-lg font-semibold transition-colors ${!uploadedImage || isProcessing ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                  {isProcessing ? 'Processing...' : 'Perform Measurement'}
+                </button>
               </div>
-              {error && (<div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4"><strong>Error:</strong> {error}</div>)}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex justify-between items-center mb-2"><h3 className="text-white font-semibold flex items-center"><Camera className="w-4 h-4 mr-2" />Top Camera - WIDTH</h3><div className="flex gap-2"><input ref={topFileInputRef} type="file" accept="image/*" onChange={handleTopCameraUpload} className="hidden" /><button type="button" onClick={() => topFileInputRef.current?.click()} className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 flex items-center"><Upload className="w-3 h-3 mr-1" />Upload</button></div></div>
-                  {topCameraImage ? (<><div className="flex gap-1 mb-2"><button type="button" onClick={() => setTopPreviewMode('original')} className={`px-2 py-1 text-xs rounded ${topPreviewMode === 'original' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Original</button><button type="button" onClick={() => setTopPreviewMode('grayscale')} disabled={!topProcessedImage} className={`px-2 py-1 text-xs rounded ${topPreviewMode === 'grayscale' ? 'bg-blue-600 text-white' : topProcessedImage ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Grayscale</button><button type="button" onClick={() => setTopPreviewMode('edges')} disabled={!topEdgeVisualization} className={`px-2 py-1 text-xs rounded ${topPreviewMode === 'edges' ? 'bg-blue-600 text-white' : topEdgeVisualization ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Edges</button></div><img src={getCurrentPreviewImage(topPreviewMode, topCameraImage, topProcessedImage, topEdgeVisualization)} alt="Top" className="w-full h-auto rounded-lg" /><div className="text-xs text-gray-400 mt-2 text-center">🟢 Green = Detected edges | 🔴 Red = Scan line</div></>) : (<div className="bg-gray-700 rounded-lg p-8 text-center"><Camera className="w-12 h-12 text-gray-500 mx-auto mb-2" /><p className="text-gray-400">Upload top camera image</p></div>)}
+              
+              {error && (
+                <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4">
+                  <strong>Error:</strong> {error}
                 </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex justify-between items-center mb-2"><h3 className="text-white font-semibold flex items-center"><Camera className="w-4 h-4 mr-2" />Side Camera - HEIGHT</h3><div className="flex gap-2"><input ref={sideFileInputRef} type="file" accept="image/*" onChange={handleSideCameraUpload} className="hidden" /><button type="button" onClick={() => sideFileInputRef.current?.click()} className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 flex items-center"><Upload className="w-3 h-3 mr-1" />Upload</button></div></div>
-                  {sideCameraImage ? (<><div className="flex gap-1 mb-2"><button type="button" onClick={() => setSidePreviewMode('original')} className={`px-2 py-1 text-xs rounded ${sidePreviewMode === 'original' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Original</button><button type="button" onClick={() => setSidePreviewMode('grayscale')} disabled={!sideProcessedImage} className={`px-2 py-1 text-xs rounded ${sidePreviewMode === 'grayscale' ? 'bg-blue-600 text-white' : sideProcessedImage ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Grayscale</button><button type="button" onClick={() => setSidePreviewMode('edges')} disabled={!sideEdgeVisualization} className={`px-2 py-1 text-xs rounded ${sidePreviewMode === 'edges' ? 'bg-blue-600 text-white' : sideEdgeVisualization ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Edges</button></div><img src={getCurrentPreviewImage(sidePreviewMode, sideCameraImage, sideProcessedImage, sideEdgeVisualization)} alt="Side" className="w-full h-auto rounded-lg" /><div className="text-xs text-gray-400 mt-2 text-center">🟢 Green = Detected edges | 🔴 Red = Scan line</div></>) : (<div className="bg-gray-700 rounded-lg p-8 text-center"><Camera className="w-12 h-12 text-gray-500 mx-auto mb-2" /><p className="text-gray-400">Upload side camera image</p></div>)}
+              )}
+              
+              <div className="bg-gray-800 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-white font-semibold flex items-center"><Camera className="w-4 h-4 mr-2" />Wood Base Image</h3>
+                  <div className="flex gap-2">
+                    <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 flex items-center"><Upload className="w-3 h-3 mr-1" />Upload</button>
+                  </div>
                 </div>
+                
+                {uploadedImage ? (
+                  <>
+                    <canvas
+                      ref={canvasRef}
+                      onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={handleMouseUp}
+                      className="w-full h-auto rounded-lg cursor-crosshair border-2 border-gray-600"
+                      style={{ maxHeight: '600px' }}
+                    />
+                    
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div className={`${
+                        widthExceedsLimit ? 'bg-red-900 border-red-500' : 
+                        widthNearLimit ? 'bg-yellow-900 border-yellow-500' : 
+                        'bg-red-900 border-red-700'
+                      } bg-opacity-30 border rounded-lg p-3`}>
+                        <div className="text-red-400 text-sm font-semibold mb-1 flex items-center justify-between">
+                          <span className="flex items-center"><Move className="w-4 h-4 mr-2" />Red Lines — Width</span>
+                          {widthExceedsLimit && <span className="text-xs bg-red-600 px-2 py-1 rounded">EXCEEDS 4"</span>}
+                          {widthNearLimit && <span className="text-xs bg-yellow-600 px-2 py-1 rounded">NEAR LIMIT</span>}
+                        </div>
+                        <div className={`${widthExceedsLimit ? 'text-red-500' : 'text-white'} text-xl font-bold`}>
+                          {widthMM.toFixed(2)} mm
+                        </div>
+                        <div className="text-gray-300 text-sm">{(widthMM / 25.4).toFixed(3)}"</div>
+                        <div className="text-xs text-gray-400 mt-1">{widthPixels.toFixed(0)} pixels</div>
+                        {/* Progress bar showing limit usage */}
+                        <div className="mt-2 bg-gray-700 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-full ${
+                              widthExceedsLimit ? 'bg-red-500' : 
+                              widthNearLimit ? 'bg-yellow-500' : 
+                              'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min(100, widthLimitPercent)}%` }}
+                          />
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {widthLimitPercent.toFixed(0)}% of 4" limit
+                        </div>
+                      </div>
+                      
+                      <div className={`${
+                        heightExceedsLimit ? 'bg-red-900 border-red-500' : 
+                        heightNearLimit ? 'bg-yellow-900 border-yellow-500' : 
+                        'bg-green-900 border-green-700'
+                      } bg-opacity-30 border rounded-lg p-3`}>
+                        <div className="text-green-400 text-sm font-semibold mb-1 flex items-center justify-between">
+                          <span className="flex items-center"><Move className="w-4 h-4 mr-2" />Green Lines — Height</span>
+                          {heightExceedsLimit && <span className="text-xs bg-red-600 px-2 py-1 rounded">EXCEEDS 4"</span>}
+                          {heightNearLimit && <span className="text-xs bg-yellow-600 px-2 py-1 rounded">NEAR LIMIT</span>}
+                        </div>
+                        <div className={`${heightExceedsLimit ? 'text-red-500' : 'text-white'} text-xl font-bold`}>
+                          {heightMM.toFixed(2)} mm
+                        </div>
+                        <div className="text-gray-300 text-sm">{(heightMM / 25.4).toFixed(3)}"</div>
+                        <div className="text-xs text-gray-400 mt-1">{heightPixels.toFixed(0)} pixels</div>
+                        {/* Progress bar showing limit usage */}
+                        <div className="mt-2 bg-gray-700 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-full ${
+                              heightExceedsLimit ? 'bg-red-500' : 
+                              heightNearLimit ? 'bg-yellow-500' : 
+                              'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min(100, heightLimitPercent)}%` }}
+                          />
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {heightLimitPercent.toFixed(0)}% of 4" limit
+                        </div>
+                      </div>
+                      
+                      <div className="bg-purple-900 bg-opacity-30 border border-purple-700 rounded-lg p-3 col-span-2">
+                        <div className="text-purple-400 text-sm font-semibold mb-1 flex items-center"><Maximize2 className="w-4 h-4 mr-2" />Area (W × H)</div>
+                        <div className="text-white text-2xl font-bold">{areaMM2.toFixed(2)} mm²</div>
+                        <div className="text-gray-300 text-lg">{areaIN2.toFixed(3)} in²</div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-gray-700 rounded-lg p-8 text-center">
+                    <Camera className="w-12 h-12 text-gray-500 mx-auto mb-2" />
+                    <p className="text-gray-400">Upload wood base image</p>
+                  </div>
+                )}
               </div>
             </>
           )}
+          
           {currentStep === 2 && finalMeasurement && (
             <>
               <div className="bg-gray-800 rounded-lg p-6 mb-4">
-                <div className="flex justify-between items-center mb-6"><h3 className="text-white text-2xl font-bold flex items-center"><Check className="w-6 h-6 mr-2 text-green-400" />Measurement Complete<span className="ml-3 px-3 py-1 bg-blue-600 text-white text-sm rounded-full">#{finalMeasurement.id}</span></h3><button type="button" onClick={startNewMeasurement} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">New Measurement</button></div>
-                <div className={`grid grid-cols-1 md:grid-cols-2 ${requiresLength ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
-                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Width (Top)</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.width.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.widthInches}"</div><div className="text-xs text-gray-400 mt-1">{finalMeasurement.widthPixels.toFixed(0)} px | Q: {finalMeasurement.widthQuality}/10</div></div>
-                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Height (Side)</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.height.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.heightInches}"</div><div className="text-xs text-gray-400 mt-1">{finalMeasurement.heightPixels.toFixed(0)} px | Q: {finalMeasurement.heightQuality}/10</div></div>
-                  <div className="bg-purple-900 bg-opacity-50 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1 flex items-center"><Maximize2 className="w-3 h-3 mr-1" />Area (W × H)</div><div className="text-purple-400 text-2xl font-bold">{finalMeasurement.areaMM2.toFixed(2)} mm²</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.areaIN2.toFixed(3)} in²</div><div className="text-xs text-gray-400 mt-1">{finalMeasurement.areaPixels.toFixed(0)} px²</div></div>
-                  {requiresLength && (<div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Length (Manual)</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.length.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.lengthInches}"</div><div className="text-xs text-gray-400 mt-1">Manual input</div></div>)}
-                  {requiresLength && (<div className="bg-blue-900 bg-opacity-50 rounded-lg p-4 md:col-span-2 lg:col-span-4"><div className="text-gray-400 text-sm mb-1">Volume (W × H × L)</div><div className="text-blue-400 text-3xl font-bold">{finalMeasurement.volume.toFixed(2)} mm³</div><div className="text-gray-300 text-xl mt-1">{finalMeasurement.volumeInches.toFixed(3)} in³</div></div>)}
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-white text-2xl font-bold flex items-center"><Check className="w-6 h-6 mr-2 text-green-400" />Measurement Complete<span className="ml-3 px-3 py-1 bg-blue-600 text-white text-sm rounded-full">#{finalMeasurement.id}</span></h3>
+                  <button type="button" onClick={startNewMeasurement} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">New Measurement</button>
                 </div>
-                <div className="mt-6 bg-gray-700 rounded-lg p-4"><div className="text-sm text-gray-300"><div className="grid grid-cols-2 gap-4"><div><span className="text-gray-400">Test Type:</span><span className="text-white ml-2 capitalize">{finalMeasurement.testType}</span></div><div><span className="text-gray-400">Calibration:</span><span className="text-white ml-2">{finalMeasurement.calibrationFactor.toFixed(6)} mm/px</span></div><div><span className="text-gray-400">Timestamp:</span><span className="text-white ml-2">{finalMeasurement.timestamp.toLocaleString()}</span></div><div><span className="text-gray-400">Cross-Section:</span><span className="text-white ml-2">{finalMeasurement.areaMM2.toFixed(2)} mm²</span></div></div></div></div>
+                
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${requiresLength ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
+                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Width</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.width.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.widthInches}"</div></div>
+                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Height</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.height.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.heightInches}"</div></div>
+                  <div className="bg-purple-900 bg-opacity-50 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1 flex items-center"><Maximize2 className="w-3 h-3 mr-1" />Area</div><div className="text-purple-400 text-2xl font-bold">{finalMeasurement.areaMM2.toFixed(2)} mm²</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.areaIN2.toFixed(3)} in²</div></div>
+                  {requiresLength && finalMeasurement.length && (
+                    <>
+                      <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Length</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.length.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.lengthInches}"</div></div>
+                      <div className="bg-blue-900 bg-opacity-50 rounded-lg p-4 md:col-span-2 lg:col-span-4"><div className="text-gray-400 text-sm mb-1">Volume</div><div className="text-blue-400 text-3xl font-bold">{finalMeasurement.volume.toFixed(2)} mm³</div><div className="text-gray-300 text-xl mt-1">{finalMeasurement.volumeInches.toFixed(3)} in³</div></div>
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4"><div className="bg-gray-800 rounded-lg p-4"><h4 className="text-white font-semibold mb-2">Width Measurement</h4><img src={topEdgeVisualization || topCameraImage} alt="W" className="w-full h-auto rounded-lg" /></div><div className="bg-gray-800 rounded-lg p-4"><h4 className="text-white font-semibold mb-2">Height Measurement</h4><img src={sideEdgeVisualization || sideCameraImage} alt="H" className="w-full h-auto rounded-lg" /></div></div>
             </>
           )}
+          
           {measurementHistory.length > 0 && (
             <div className="bg-gray-800 rounded-lg p-4 mt-4">
               <div className="flex justify-between items-center mb-4"><h3 className="text-white font-semibold">Measurement History ({measurementCounter})</h3><div className="flex gap-2"><button type="button" onClick={() => setShowHistory(!showHistory)} className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{showHistory ? 'Hide' : 'Show'}</button><button type="button" onClick={exportMeasurements} className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 flex items-center"><Download className="w-4 h-4 mr-1" />CSV</button><button type="button" onClick={() => {setMeasurementHistory([]); setMeasurementCounter(0);}} className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 flex items-center"><Trash2 className="w-4 h-4 mr-1" />Clear</button></div></div>
@@ -388,10 +595,8 @@ const Measurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testTyp
           )}
         </div>
       </div>
-      {showCalibration && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"><div className="bg-gray-800 rounded-lg max-w-2xl w-full p-6"><h3 className="text-white text-xl font-semibold mb-4">Calibration Settings</h3><div className="mb-4"><label className="flex items-center text-white mb-2"><input type="checkbox" checked={useCameraCalibration} onChange={(e) => setUseCameraCalibration(e.target.checked)} className="mr-2" />Use Camera Parameters</label></div>{useCameraCalibration ? (<div className="grid grid-cols-2 gap-4 mb-4"><div><label className="block text-gray-300 text-sm mb-1">Distance (mm)</label><input type="number" value={cameraDistance} onChange={(e) => setCameraDistance(parseFloat(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div><div><label className="block text-gray-300 text-sm mb-1">Focal (mm)</label><input type="number" step="0.1" value={focalLength} onChange={(e) => setFocalLength(parseFloat(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div><div><label className="block text-gray-300 text-sm mb-1">Sensor (mm)</label><input type="number" step="0.1" value={sensorWidth} onChange={(e) => setSensorWidth(parseFloat(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div><div><label className="block text-gray-300 text-sm mb-1">Image (px)</label><input type="number" value={imageWidth} onChange={(e) => setImageWidth(parseInt(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div></div>) : (<div className="grid grid-cols-2 gap-4 mb-4"><div><label className="block text-gray-300 text-sm mb-1">Ref Width (px)</label><input type="number" value={referencePixels} onChange={(e) => setReferencePixels(parseFloat(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div><div><label className="block text-gray-300 text-sm mb-1">Ref Width (mm)</label><input type="number" step="0.1" value={referenceMillimeters} onChange={(e) => setReferenceMillimeters(parseFloat(e.target.value))} className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600" /></div></div>)}<div className="flex justify-end gap-2"><button type="button" onClick={() => setShowCalibration(false)} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Cancel</button><button type="button" onClick={calculateCalibrationFactor} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Apply</button></div></div></div>)}
-      <style jsx>{`.slider-thumb::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:#3b82f6;cursor:pointer}.slider-thumb::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#3b82f6;cursor:pointer;border:none}`}</style>
     </div>
   );
 };
 
-export default Measurement;
+export default ManualMeasurement;
