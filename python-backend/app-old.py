@@ -81,9 +81,9 @@ TESSERACT_PATH = "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
 try:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-    print(f"âœ“ Tesseract path set: {TESSERACT_PATH}")
+    print(f"✓ Tesseract path set: {TESSERACT_PATH}")
 except Exception as e:
-    print(f"âœ— Tesseract error: {e}")
+    print(f"✗ Tesseract error: {e}")
 
 # Seven-segment OCR instance
 seven_segment_ocr = SevenSegmentOCR()
@@ -92,11 +92,11 @@ seven_segment_ocr = SevenSegmentOCR()
 def load_calibration_from_laravel():
     """Load active calibration from Laravel database"""
     try:
-        print("ðŸ“„ Loading calibration from Laravel...")
+        print("📄 Loading calibration from Laravel...")
         response = requests.get(f'{LARAVEL_API_URL}/api/calibration', timeout=5)
         
         if not response.ok:
-            print(f"âŒ Failed to fetch from Laravel: {response.status_code}")
+            print(f"❌ Failed to fetch from Laravel: {response.status_code}")
             return False
         
         calibrations = response.json()
@@ -108,7 +108,7 @@ def load_calibration_from_laravel():
                 break
         
         if not active_calibration:
-            print("âŒ No active calibration found")
+            print("❌ No active calibration found")
             return False
         
         seven_segment_ocr.set_calibration(
@@ -118,11 +118,11 @@ def load_calibration_from_laravel():
             decimal_position=active_calibration.get('decimal_position', 1)
         )
         
-        print(f"âœ… Loaded calibration (ID: {active_calibration['id']})")
+        print(f"✅ Loaded calibration (ID: {active_calibration['id']})")
         return True
         
     except Exception as e:
-        print(f"âŒ Error loading calibration: {e}")
+        print(f"❌ Error loading calibration: {e}")
         return False
 
 
@@ -204,7 +204,7 @@ def manual_measure_calculate():
         is_valid, error_msg = validate_line_positions(
             width_line1, width_line2, height_line1, height_line2,
             img_width, img_height,
-            calibration_factor  # â† ADD THIS 7th PARAMETER
+            calibration_factor  # ← ADD THIS 7th PARAMETER
         )
         
         if not is_valid:
@@ -415,7 +415,7 @@ def measure_wood():
                 "mode": mode,
                 "pixelMeasurement": round(pixel_measurement, 2),
                 "millimeterMeasurement": round(mm_measurement, 2),
-                "displayUnit": 'mmÂ²',
+                "displayUnit": 'mm²',
                 "success": True
             }
         else:
@@ -555,34 +555,23 @@ def calibrate_seven_segment():
         has_decimal_point = data.get('hasDecimalPoint', False)
         decimal_position = data.get('decimalPosition', 1)
         
-        # Get calibration image size
-        calibration_image_size = data.get('calibrationImageSize', {
-            'width': int(display_box['x'] + display_box['width']),
-            'height': int(display_box['y'] + display_box['height'])
-        })
-        
-        # Store calibration with image size
-        calibration_data = {
-            'display_box': display_box,
-            'segment_boxes': segment_boxes,
-            'num_digits': len(segment_boxes),
-            'has_decimal_point': has_decimal_point,
-            'decimal_position': decimal_position,
-            'calibration_image_size': calibration_image_size
-        }
-        
         seven_segment_ocr.set_calibration(
             display_box, 
             segment_boxes,
             has_decimal_point=has_decimal_point,
             decimal_position=decimal_position
         )
-        seven_segment_ocr.calibration['calibration_image_size'] = calibration_image_size
         
         return jsonify({
             "success": True,
             "message": "Calibration saved",
-            "calibration": calibration_data
+            "calibration": {
+                "displayBox": display_box,
+                "segmentBoxes": segment_boxes,
+                "numDigits": len(segment_boxes),
+                "hasDecimalPoint": has_decimal_point,
+                "decimalPosition": decimal_position
+            }
         })
     except Exception as e:
         print(f"ERROR: {e}")
@@ -621,7 +610,7 @@ def recognize_seven_segment():
     """
     try:
         if seven_segment_ocr.calibration is None:
-            print("âš ï¸ Loading calibration from Laravel...")
+            print("⚠️ Loading calibration from Laravel...")
             if not load_calibration_from_laravel():
                 return jsonify({
                     "error": "No calibration found. Please calibrate first.",
@@ -874,7 +863,7 @@ def get_seven_segment_calibration():
                 "source": "flask_memory"
             })
         
-        print("ðŸ“„ Trying Laravel...")
+        print("📄 Trying Laravel...")
         if load_calibration_from_laravel():
             return jsonify({
                 "success": True,
@@ -1212,7 +1201,7 @@ if __name__ == '__main__':
     print(f"Server: http://localhost:5000")
     print(f"Swagger: http://localhost:5000/apidocs")
     print("=" * 60)
-    print("\nðŸ“‹ Endpoints:")
+    print("\n📋 Endpoints:")
     print("  POST /measure (Edge Detection)")
     print("  POST /manual-measure/calculate (Manual Lines)")
     print("  POST /manual-measure/visualize (Manual Visualization)")

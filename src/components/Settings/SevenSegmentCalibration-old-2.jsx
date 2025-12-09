@@ -228,7 +228,6 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
           segment_boxes: segmentBoxes,
           has_decimal_point: hasDecimalPoint,
           decimal_position: decimalPosition,
-          calibration_image_size: imageSize,
           notes: 'Created from calibration wizard'
         })
       });
@@ -247,8 +246,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
             displayBox,
             segmentBoxes,
             hasDecimalPoint,
-            decimalPosition,
-            calibrationImageSize: imageSize
+            decimalPosition
           })
         });
       } catch (pythonErr) {
@@ -643,7 +641,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
                       {recognitionResult.full_number}
                     </div>
                     <div className="text-sm text-gray-400">
-                      {recognitionResult.is_valid ? 'âœ“ Valid' : 'âš  Contains unknown segments'}
+                      {recognitionResult.is_valid ? '✓ Valid' : '⚠ Contains unknown segments'}
                     </div>
                   </div>
                 </div>

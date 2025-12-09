@@ -26,7 +26,7 @@ const KiloNewtonGauge = ({
   onMainPageReturn = () => {},
   onTestComplete = () => {} 
 }) => {
-  const [kNValue, setKNValue] = useState(0); // Current kN value from WebSocket
+  const [kNValue, setKNValue] = useState(0); // Current kN value
   const [pressureData, setPressureData] = useState([]); // Store pressure data points over time
   const [maxPressure, setMaxPressure] = useState({ value: 0, time: 0 }); // Track maximum pressure
   const [testStartTime, setTestStartTime] = useState(null); // When the test started
@@ -35,39 +35,203 @@ const KiloNewtonGauge = ({
   const [testCompleted, setTestCompleted] = useState(false); // Track if test completed
   const [svgCreated, setSvgCreated] = useState(false); // Track if SVG has been created
 
-  const config = gaugeConfigs[testType?.toLowerCase()] || defaultConfig; // Get the configuration based on testType
+  const config = gaugeConfigs[testType?.toLowerCase()] || defaultConfig;
   const graphRef = useRef(null);
   const containerRef = useRef(null);
-  const socketRef = useRef(null);
   const svgRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const simulationIntervalRef = useRef(null);
+  const currentPhaseRef = useRef('loading'); // loading, increasing, peaking, dropping
+  const targetPeakRef = useRef(0);
+  const peakReachedTimeRef = useRef(0);
 
   // Log props for debugging
   useEffect(() => {
-    console.log("KiloNewtonGauge props:", { testType, onPreviousTest: !!onPreviousTest, onMainPageReturn: !!onMainPageReturn });
-  }, [testType, onPreviousTest, onMainPageReturn]);
+    console.log("KiloNewtonGauge props:", { 
+      testType, 
+      onPreviousTest: !!onPreviousTest, 
+      onMainPageReturn: !!onMainPageReturn,
+      onTestComplete: !!onTestComplete 
+    });
+  }, [testType, onPreviousTest, onMainPageReturn, onTestComplete]);
 
-  // Start the test and timer
+  // Start the test and simulation
   const startTest = () => {
     setTestStartTime(Date.now());
-    setPressureData([]); // Reset previous data
+    setPressureData([]);
     setMaxPressure({ value: 0, time: 0 });
     setTestCompleted(false);
     setIsTestRunning(true);
+    setKNValue(0);
+    
+    // Reset simulation state
+    currentPhaseRef.current = 'loading';
+    
+    // Generate random peak value between 800-1400 kN (realistic wood failure range)
+    targetPeakRef.current = Math.random() * (1400 - 800) + 800;
+    console.log('Target peak force:', targetPeakRef.current.toFixed(2), 'kN');
   };
+
+  // Realistic pressure simulation
+  useEffect(() => {
+    if (!isTestRunning || testCompleted) {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Simulation runs at 50ms intervals (20 updates per second)
+    simulationIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const elapsedSeconds = (now - testStartTime) / 1000;
+      
+      let newValue = kNValue;
+      const phase = currentPhaseRef.current;
+
+      switch (phase) {
+        case 'loading':
+          // Initial loading phase: rapid increase (first 1 second)
+          if (elapsedSeconds < 1.0) {
+            // Exponential increase for first second
+            const progress = elapsedSeconds;
+            newValue = targetPeakRef.current * 0.15 * progress;
+          } else {
+            currentPhaseRef.current = 'increasing';
+            console.log('Phase: Loading → Increasing');
+          }
+          break;
+
+        case 'increasing':
+          // Main increase phase: gradual increase with some noise
+          const progressToTarget = kNValue / targetPeakRef.current;
+          
+          if (progressToTarget < 0.95) {
+            // Increase rate slows as we approach peak (realistic material behavior)
+            const baseIncrease = (targetPeakRef.current * 0.02) * (1 - progressToTarget);
+            const noise = (Math.random() - 0.5) * 2; // ±1 kN noise
+            newValue = kNValue + baseIncrease + noise;
+            
+            // Clamp to not exceed target yet
+            if (newValue > targetPeakRef.current * 0.95) {
+              newValue = targetPeakRef.current * 0.95;
+            }
+          } else {
+            // Reached near-peak, enter peaking phase
+            currentPhaseRef.current = 'peaking';
+            peakReachedTimeRef.current = now;
+            console.log('Phase: Increasing → Peaking at', kNValue.toFixed(2), 'kN');
+          }
+          break;
+
+        case 'peaking':
+          // Peak phase: fluctuate around peak for 1-2 seconds (material at limit)
+          const timeSincePeak = (now - peakReachedTimeRef.current) / 1000;
+          
+          if (timeSincePeak < 1.5) {
+            // Small fluctuations around peak ±5 kN
+            const fluctuation = (Math.random() - 0.5) * 10;
+            newValue = targetPeakRef.current + fluctuation;
+            
+            // Stay within reasonable bounds
+            newValue = Math.max(
+              targetPeakRef.current * 0.95, 
+              Math.min(targetPeakRef.current * 1.05, newValue)
+            );
+          } else {
+            // Start failure/drop
+            currentPhaseRef.current = 'dropping';
+            console.log('Phase: Peaking → Dropping (material failure)');
+          }
+          break;
+
+        case 'dropping':
+          // Failure phase: rapid exponential drop (material breaking)
+          const dropProgress = (now - peakReachedTimeRef.current - 1500) / 1000;
+          
+          // Exponential decay with some noise
+          const dropRate = Math.exp(-dropProgress * 2); // Exponential decay
+          newValue = targetPeakRef.current * dropRate * 0.3;
+          
+          // Add some noise to simulate crack propagation
+          const dropNoise = (Math.random() - 0.5) * 5;
+          newValue += dropNoise;
+          
+          // Once dropped below 20% of peak, test is complete
+          if (newValue < targetPeakRef.current * 0.2) {
+            newValue = 0;
+            currentPhaseRef.current = 'complete';
+            setIsTestRunning(false);
+            setTestCompleted(true);
+            
+            clearInterval(simulationIntervalRef.current);
+            simulationIntervalRef.current = null;
+            
+            console.log('Test complete! Max pressure:', maxPressure.value.toFixed(2), 'kN');
+          }
+          break;
+      }
+
+      // Ensure non-negative
+      newValue = Math.max(0, newValue);
+
+      // Update current value
+      setKNValue(newValue);
+
+      // Add to pressure data
+      const currentTime = elapsedSeconds;
+      setPressureData(prevData => {
+        const newData = [...prevData, { time: currentTime, pressure: newValue }];
+        return newData;
+      });
+
+      // Track maximum pressure
+      if (newValue > maxPressure.value) {
+        setMaxPressure({ value: newValue, time: currentTime });
+      }
+
+      // Warning if exceeding warning threshold
+      setShowWarning(newValue > config.warning);
+
+    }, 50); // 20 updates per second
+
+    return () => {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+      }
+    };
+  }, [isTestRunning, testCompleted, kNValue, testStartTime, config.warning, maxPressure.value]);
+
+  // Call onTestComplete when test finishes
+  useEffect(() => {
+    if (testCompleted && maxPressure.value > 0) {
+      // Prepare strength test data
+      const strengthData = {
+        maxForce: maxPressure.value,
+        timestamp: new Date(testStartTime + (maxPressure.time * 1000)).toISOString(),
+        duration: maxPressure.time,
+        pressureHistory: pressureData,
+        testType: testType
+      };
+      
+      console.log('Sending test data to parent:', strengthData);
+      
+      // Call onTestComplete with data
+      if (typeof onTestComplete === 'function') {
+        onTestComplete(strengthData);
+      }
+    }
+  }, [testCompleted, maxPressure, testStartTime, pressureData, testType, onTestComplete]);
 
   // Handle navigation with proper cleanup
   const handlePreviousTest = () => {
     console.log("Previous Test button clicked");
     
-    // Close WebSocket connection
-    if (socketRef.current) {
-      try {
-        socketRef.current.close();
-        socketRef.current = null;
-      } catch (err) {
-        console.error("Error closing WebSocket:", err);
-      }
+    // Stop simulation
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
     }
     
     // Disconnect resize observer
@@ -80,7 +244,6 @@ const KiloNewtonGauge = ({
       }
     }
     
-    // Navigate to previous test - ensure this is a function
     if (typeof onPreviousTest === 'function') {
       console.log("Calling onPreviousTest function");
       onPreviousTest();
@@ -92,14 +255,10 @@ const KiloNewtonGauge = ({
   const handleMainPageReturn = () => {
     console.log("Main Page Return button clicked");
     
-    // Close WebSocket connection
-    if (socketRef.current) {
-      try {
-        socketRef.current.close();
-        socketRef.current = null;
-      } catch (err) {
-        console.error("Error closing WebSocket:", err);
-      }
+    // Stop simulation
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
     }
     
     // Disconnect resize observer
@@ -112,7 +271,6 @@ const KiloNewtonGauge = ({
       }
     }
     
-    // Navigate to main page - ensure this is a function
     if (typeof onMainPageReturn === 'function') {
       console.log("Calling onMainPageReturn function");
       onMainPageReturn();
@@ -120,72 +278,6 @@ const KiloNewtonGauge = ({
       console.error("onMainPageReturn is not a function", onMainPageReturn);
     }
   };
-
-  // Set up WebSocket connection
-  useEffect(() => {
-    // Set up the WebSocket connection
-    try {
-      socketRef.current = new WebSocket("ws://localhost:8080");
-
-      // Handle incoming messages from the WebSocket
-      socketRef.current.onmessage = (event) => {
-        const newValue = parseFloat(event.data);
-        if (!isNaN(newValue)) {
-          setKNValue(newValue); // Update the current value
-
-          if (isTestRunning) {
-            const currentTime = (Date.now() - testStartTime) / 1000; // Time in seconds
-            
-            // Add the new data point
-            setPressureData(prevData => {
-              const newData = [...prevData, { time: currentTime, pressure: newValue }];
-              return newData;
-            });
-
-            // Update max pressure if the new value is higher
-            if (newValue > maxPressure.value) {
-              setMaxPressure({ value: newValue, time: currentTime });
-            }
-
-            // Detect pressure drop (test completion)
-            // Check for significant pressure drop (e.g., 20% drop from max)
-            const dropThreshold = 0.20; // 20% drop
-            if (maxPressure.value > 10 && newValue < maxPressure.value * (1 - dropThreshold)) {
-              setIsTestRunning(false);
-              setTestCompleted(true);
-            }
-
-            // Show warning if the new value exceeds the warning threshold
-            setShowWarning(newValue > config.warning);
-          }
-        }
-      };
-
-      // Handle WebSocket errors
-      socketRef.current.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
-
-      // Handle WebSocket close
-      socketRef.current.onclose = () => {
-        console.log("WebSocket connection closed");
-      };
-
-    } catch (err) {
-      console.error("Error creating WebSocket:", err);
-    }
-
-    // Clean up the WebSocket connection on component unmount
-    return () => {
-      if (socketRef.current) {
-        try {
-          socketRef.current.close();
-        } catch (err) {
-          console.error("Error closing WebSocket:", err);
-        }
-      }
-    };
-  }, [config.warning, isTestRunning, maxPressure.value, testStartTime]);
 
   // Initialize the D3 graph
   useEffect(() => {
@@ -235,7 +327,7 @@ const KiloNewtonGauge = ({
         
         // Set up scales
         const xScale = d3.scaleLinear()
-          .domain([0, 30]) // Fixed at 30 seconds like in screenshot
+          .domain([0, 30]) // Fixed at 30 seconds
           .range([0, innerWidth]);
         
         const yScale = d3.scaleLinear()
@@ -244,11 +336,11 @@ const KiloNewtonGauge = ({
         
         // Create axes
         const xAxis = d3.axisBottom(xScale)
-          .ticks(15) // More ticks for seconds
+          .ticks(15)
           .tickFormat(d => d);
         
         const yAxis = d3.axisLeft(yScale)
-          .ticks(8) // For values like 0, 200, 400, etc.
+          .ticks(8)
           .tickFormat(d => d);
         
         // Add X axis
@@ -314,16 +406,16 @@ const KiloNewtonGauge = ({
         if (pressureData.length > 0) {
           // Create line generator
           const line = d3.line()
-            .x(d => xScale(Math.min(30, d.time))) // Cap at 30 seconds
+            .x(d => xScale(Math.min(30, d.time)))
             .y(d => yScale(d.pressure))
-            .curve(d3.curveLinear); // Use linear interpolation like in screenshot
+            .curve(d3.curveLinear);
           
           // Add the line path
           g.append("path")
             .datum(pressureData)
             .attr("class", "line")
             .attr("fill", "none")
-            .attr("stroke", "white") // White line like in screenshot
+            .attr("stroke", "white")
             .attr("stroke-width", 1.5)
             .attr("d", line);
           
@@ -335,6 +427,16 @@ const KiloNewtonGauge = ({
               .attr("cy", yScale(maxPressure.value))
               .attr("r", 4)
               .attr("fill", "red");
+            
+            // Add label for max point
+            g.append("text")
+              .attr("x", xScale(Math.min(30, maxPressure.time)))
+              .attr("y", yScale(maxPressure.value) - 10)
+              .attr("text-anchor", "middle")
+              .style("fill", "red")
+              .style("font-size", "12px")
+              .style("font-weight", "bold")
+              .text(`Max: ${maxPressure.value.toFixed(2)} kN`);
           }
         }
       } catch (err) {
@@ -368,7 +470,7 @@ const KiloNewtonGauge = ({
         console.error("Error cleaning up resize observer:", err);
       }
     };
-  }, [pressureData, svgCreated]);
+  }, [pressureData, svgCreated, maxPressure]);
 
   // Handle warning popup close
   const handleCloseWarning = () => {
@@ -377,7 +479,7 @@ const KiloNewtonGauge = ({
 
   return (
     <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900" ref={containerRef}>
-      {/* Header Bar - Similar to screenshot */}
+      {/* Header Bar */}
       <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
         <button
           type="button"
@@ -389,7 +491,7 @@ const KiloNewtonGauge = ({
           ☰
         </button>
         <span className="ml-4 text-gray-100 text-lg font-semibold">
-          TimberMach | {testType || 'Strength'} Test
+          TimberMach | {testType || 'Strength'} Test {isTestRunning && '(Running...)'}
         </span>
         <button
           type="button"
@@ -405,9 +507,9 @@ const KiloNewtonGauge = ({
       {/* Main Content - Full Page */}
       <div className="mt-12 flex flex-col flex-grow w-full h-full overflow-hidden flex justify-center items-center">
         <div className="flex-grow flex flex-col mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-6 flex justify-center items-center">
-          {/* Curved Container - Like in Screenshot */}
+          {/* Curved Container */}
           <div className="flex flex-col rounded-[30px] bg-gray-800 w-full flex-grow overflow-hidden p-4 mx-auto my-2 sm:my-4">
-            {/* Navigation Buttons - FIXED */}
+            {/* Navigation Buttons */}
             <div className="flex justify-between mb-4">
               <button
                 type="button"
@@ -431,6 +533,11 @@ const KiloNewtonGauge = ({
                 {kNValue.toFixed(2)}
                 <span className="ml-2 text-xl sm:text-2xl md:text-3xl">kN</span>
               </div>
+              {maxPressure.value > 0 && (
+                <div className="text-gray-400 text-sm mt-2">
+                  Peak: {maxPressure.value.toFixed(2)} kN at {maxPressure.time.toFixed(1)}s
+                </div>
+              )}
             </div>
             
             {/* Graph Container - Fill Available Space */}

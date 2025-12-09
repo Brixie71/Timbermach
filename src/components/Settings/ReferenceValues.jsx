@@ -12,10 +12,11 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft
 } from 'lucide-react';
 
-const ReferenceValues = () => {
+const ReferenceValues = ({ onBack }) => {
   const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
   
   // State
@@ -206,11 +207,11 @@ const ReferenceValues = () => {
 
   const getGroupColor = (group) => {
     const colors = {
-      'high': 'bg-red-100 text-red-800 border-red-300',
-      'moderately_high': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      'medium': 'bg-green-100 text-green-800 border-green-300'
+      'high': 'bg-red-500 bg-opacity-20 text-red-300 border-red-500',
+      'moderately_high': 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-500',
+      'medium': 'bg-green-500 bg-opacity-20 text-green-300 border-green-500'
     };
-    return colors[group] || 'bg-gray-100 text-gray-800 border-gray-300';
+    return colors[group] || 'bg-gray-500 bg-opacity-20 text-gray-300 border-gray-500';
   };
 
   const exportToCSV = () => {
@@ -253,20 +254,33 @@ const ReferenceValues = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Reference Values Database</h1>
-              <p className="text-gray-600 mt-1">Philippine Wood Species Strength Properties</p>
+              {/* Back Button */}
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-4"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Back to Settings
+                </button>
+              )}
+              
+              <h1 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+                Reference Values Database
+              </h1>
+              <p className="text-gray-400 mt-1">Philippine Wood Species Strength Properties</p>
             </div>
             
             <div className="flex gap-3">
               <button
                 onClick={loadReferenceValues}
-                className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
                 title="Refresh"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -275,7 +289,7 @@ const ReferenceValues = () => {
               
               <button
                 onClick={exportToCSV}
-                className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg"
               >
                 <Download className="w-4 h-4" />
                 Export CSV
@@ -283,7 +297,7 @@ const ReferenceValues = () => {
               
               <button
                 onClick={handleAdd}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                className="bg-gradient-to-r from-purple-600 to-purple-400 hover:from-purple-700 hover:to-purple-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg"
               >
                 <Plus className="w-4 h-4" />
                 Add New Species
@@ -301,7 +315,7 @@ const ReferenceValues = () => {
                 placeholder="Search by common name or botanical name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
 
@@ -309,7 +323,7 @@ const ReferenceValues = () => {
             <select
               value={selectedGroup}
               onChange={(e) => setSelectedGroup(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             >
               <option value="all">All Strength Groups</option>
               <option value="high">High Strength</option>
@@ -319,7 +333,7 @@ const ReferenceValues = () => {
           </div>
 
           {/* Results Count */}
-          <div className="mt-3 text-sm text-gray-600">
+          <div className="mt-3 text-sm text-gray-400">
             Showing {filteredData.length} of {referenceValues.length} species
           </div>
         </div>
@@ -328,10 +342,10 @@ const ReferenceValues = () => {
       {/* Error Message */}
       {error && (
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+          <div className="bg-red-900 bg-opacity-30 backdrop-blur-sm border border-red-700 text-red-300 px-4 py-3 rounded-lg flex items-center gap-2">
             <X className="w-5 h-5" />
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="ml-auto">
+            <button onClick={() => setError(null)} className="ml-auto hover:text-white transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -342,24 +356,24 @@ const ReferenceValues = () => {
       <div className="max-w-7xl mx-auto px-6 py-6">
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Loading reference values...</p>
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent"></div>
+            <p className="mt-4 text-gray-400">Loading reference values...</p>
           </div>
         ) : filteredData.length === 0 ? (
-          <div className="bg-white rounded-lg p-12 text-center">
-            <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Results Found</h3>
+          <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg p-12 text-center">
+            <Search className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-300 mb-2">No Results Found</h3>
             <p className="text-gray-500">Try adjusting your search or filter criteria</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-900 bg-opacity-50 border-b border-gray-700">
                   <tr>
                     <th 
                       onClick={() => handleSort('strength_group')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         Strength Group
@@ -368,102 +382,102 @@ const ReferenceValues = () => {
                     </th>
                     <th 
                       onClick={() => handleSort('common_name')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         Common Name
                         <SortIcon field="common_name" />
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                       Botanical Name
                     </th>
                     <th 
                       onClick={() => handleSort('compression_parallel')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        Fc (Mpa)
+                        Fc (MPa)
                         <SortIcon field="compression_parallel" />
                       </div>
                     </th>
                     <th 
                       onClick={() => handleSort('compression_perpendicular')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        Fc⊥ (Mpa)
+                        Fc⊥ (MPa)
                         <SortIcon field="compression_perpendicular" />
                       </div>
                     </th>
                     <th 
                       onClick={() => handleSort('shear_parallel')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        Fv (Mpa)
+                        Fv (MPa)
                         <SortIcon field="shear_parallel" />
                       </div>
                     </th>
                     <th 
                       onClick={() => handleSort('bending_tension_parallel')}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700 hover:bg-opacity-50 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        FbFt (Mpa)
+                        FbFt (MPa)
                         <SortIcon field="bending_tension_parallel" />
                       </div>
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-700">
                   {filteredData.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={item.id} className="hover:bg-gray-700 hover:bg-opacity-30 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getGroupColor(item.strength_group)}`}>
+                        <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getGroupColor(item.strength_group)}`}>
                           {getGroupLabel(item.strength_group).replace(' Strength Group', '')}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{item.common_name}</div>
+                        <div className="text-sm font-medium text-white">{item.common_name}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-600 italic">{item.botanical_name || '-'}</div>
+                        <div className="text-sm text-gray-400 italic">{item.botanical_name || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         {item.compression_parallel}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         {item.compression_perpendicular}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         {item.shear_parallel}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         {item.bending_tension_parallel}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => setShowDetailsModal(item)}
-                            className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded transition-colors"
+                            className="text-blue-400 hover:text-blue-300 p-2 hover:bg-blue-900 hover:bg-opacity-30 rounded transition-colors"
                             title="View Details"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleEdit(item)}
-                            className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded transition-colors"
+                            className="text-green-400 hover:text-green-300 p-2 hover:bg-green-900 hover:bg-opacity-30 rounded transition-colors"
                             title="Edit"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setShowDeleteConfirm(item.id)}
-                            className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded transition-colors"
+                            className="text-red-400 hover:text-red-300 p-2 hover:bg-red-900 hover:bg-opacity-30 rounded transition-colors"
                             title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -481,10 +495,10 @@ const ReferenceValues = () => {
 
       {/* Add/Edit Modal */}
       {(showAddModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold">
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-white">
                 {showAddModal ? 'Add New Species' : 'Edit Species'}
               </h3>
               <button
@@ -492,7 +506,7 @@ const ReferenceValues = () => {
                   setShowAddModal(false);
                   setShowEditModal(false);
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -502,13 +516,13 @@ const ReferenceValues = () => {
               <div className="space-y-4">
                 {/* Strength Group */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Strength Group *
                   </label>
                   <select
                     value={formData.strength_group}
                     onChange={(e) => setFormData({...formData, strength_group: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     required
                   >
                     <option value="high">High Strength Group</option>
@@ -519,14 +533,14 @@ const ReferenceValues = () => {
 
                 {/* Common Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Common Name *
                   </label>
                   <input
                     type="text"
                     value={formData.common_name}
                     onChange={(e) => setFormData({...formData, common_name: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="e.g., Molave"
                     required
                   />
@@ -534,22 +548,22 @@ const ReferenceValues = () => {
 
                 {/* Botanical Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Botanical Name
                   </label>
                   <input
                     type="text"
                     value={formData.botanical_name}
                     onChange={(e) => setFormData({...formData, botanical_name: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="e.g., Vitex parviflora Juss."
                   />
                 </div>
 
                 {/* Mechanical Properties */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
                       Compression Parallel (Fc) *
                     </label>
                     <input
@@ -557,14 +571,14 @@ const ReferenceValues = () => {
                       step="0.01"
                       value={formData.compression_parallel}
                       onChange={(e) => setFormData({...formData, compression_parallel: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="MPa"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
                       Compression Perpendicular (Fc⊥) *
                     </label>
                     <input
@@ -572,14 +586,14 @@ const ReferenceValues = () => {
                       step="0.01"
                       value={formData.compression_perpendicular}
                       onChange={(e) => setFormData({...formData, compression_perpendicular: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="MPa"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
                       Shear Parallel (Fv) *
                     </label>
                     <input
@@ -587,14 +601,14 @@ const ReferenceValues = () => {
                       step="0.01"
                       value={formData.shear_parallel}
                       onChange={(e) => setFormData({...formData, shear_parallel: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="MPa"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
                       Bending & Tension Parallel (FbFt) *
                     </label>
                     <input
@@ -602,7 +616,7 @@ const ReferenceValues = () => {
                       step="0.01"
                       value={formData.bending_tension_parallel}
                       onChange={(e) => setFormData({...formData, bending_tension_parallel: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="MPa"
                       required
                     />
@@ -611,21 +625,21 @@ const ReferenceValues = () => {
               </div>
 
               {/* Form Actions */}
-              <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200">
+              <div className="flex gap-3 mt-6 pt-6 border-t border-gray-700">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
                     setShowEditModal(false);
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-purple-400 hover:from-purple-700 hover:to-purple-500 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg"
                 >
                   <Save className="w-4 h-4" />
                   {isLoading ? 'Saving...' : 'Save'}
@@ -638,13 +652,13 @@ const ReferenceValues = () => {
 
       {/* Details Modal */}
       {showDetailsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full">
-            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold">Species Details</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-2xl w-full shadow-2xl">
+            <div className="border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-white">Species Details</h3>
               <button
                 onClick={() => setShowDetailsModal(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -656,31 +670,31 @@ const ReferenceValues = () => {
                 <div className={`inline-block px-3 py-1 text-sm font-medium rounded-full border mb-3 ${getGroupColor(showDetailsModal.strength_group)}`}>
                   {getGroupLabel(showDetailsModal.strength_group)}
                 </div>
-                <h4 className="text-2xl font-bold text-gray-900 mb-2">{showDetailsModal.common_name}</h4>
+                <h4 className="text-3xl font-bold text-white mb-2">{showDetailsModal.common_name}</h4>
                 {showDetailsModal.botanical_name && (
-                  <p className="text-gray-600 italic">{showDetailsModal.botanical_name}</p>
+                  <p className="text-gray-400 italic text-lg">{showDetailsModal.botanical_name}</p>
                 )}
               </div>
 
               {/* Mechanical Properties */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h5 className="font-semibold text-gray-700 mb-4">Mechanical Properties</h5>
+              <div className="bg-gray-900 bg-opacity-50 rounded-lg p-6">
+                <h5 className="font-semibold text-gray-300 mb-4 text-lg">Mechanical Properties</h5>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-3 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Compression Parallel (Fc)</div>
-                    <div className="text-2xl font-bold text-blue-600">{showDetailsModal.compression_parallel} <span className="text-sm text-gray-500">MPa</span></div>
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <div className="text-sm text-gray-400 mb-2">Compression Parallel (Fc)</div>
+                    <div className="text-2xl font-bold text-purple-400">{showDetailsModal.compression_parallel} <span className="text-sm text-gray-500">MPa</span></div>
                   </div>
-                  <div className="bg-white p-3 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Compression Perpendicular (Fc⊥)</div>
-                    <div className="text-2xl font-bold text-blue-600">{showDetailsModal.compression_perpendicular} <span className="text-sm text-gray-500">MPa</span></div>
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <div className="text-sm text-gray-400 mb-2">Compression Perpendicular (Fc⊥)</div>
+                    <div className="text-2xl font-bold text-purple-400">{showDetailsModal.compression_perpendicular} <span className="text-sm text-gray-500">MPa</span></div>
                   </div>
-                  <div className="bg-white p-3 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Shear Parallel (Fv)</div>
-                    <div className="text-2xl font-bold text-blue-600">{showDetailsModal.shear_parallel} <span className="text-sm text-gray-500">MPa</span></div>
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <div className="text-sm text-gray-400 mb-2">Shear Parallel (Fv)</div>
+                    <div className="text-2xl font-bold text-purple-400">{showDetailsModal.shear_parallel} <span className="text-sm text-gray-500">MPa</span></div>
                   </div>
-                  <div className="bg-white p-3 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Bending & Tension Parallel (FbFt)</div>
-                    <div className="text-2xl font-bold text-blue-600">{showDetailsModal.bending_tension_parallel} <span className="text-sm text-gray-500">MPa</span></div>
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <div className="text-sm text-gray-400 mb-2">Bending & Tension Parallel (FbFt)</div>
+                    <div className="text-2xl font-bold text-purple-400">{showDetailsModal.bending_tension_parallel} <span className="text-sm text-gray-500">MPa</span></div>
                   </div>
                 </div>
               </div>
@@ -692,14 +706,14 @@ const ReferenceValues = () => {
                     setShowDetailsModal(null);
                     handleEdit(showDetailsModal);
                   }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-medium transition-all shadow-lg"
                 >
                   <Edit2 className="w-4 h-4" />
                   Edit
                 </button>
                 <button
                   onClick={() => setShowDetailsModal(null)}
-                  className="flex-1 border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg transition-colors"
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium transition-colors"
                 >
                   Close
                 </button>
@@ -711,22 +725,22 @@ const ReferenceValues = () => {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Confirm Deletion</h3>
-            <p className="text-gray-600 mb-6">
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-2xl font-bold text-white mb-4">Confirm Deletion</h3>
+            <p className="text-gray-400 mb-6">
               Are you sure you want to delete this reference value? This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(showDeleteConfirm)}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                className="flex-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-6 py-3 rounded-lg font-medium transition-all shadow-lg"
               >
                 Delete
               </button>
@@ -734,6 +748,27 @@ const ReferenceValues = () => {
           </div>
         </div>
       )}
+
+      {/* Info Card */}
+      <div className="max-w-7xl mx-auto px-6 pb-8">
+        <div className="bg-purple-900 bg-opacity-30 backdrop-blur-sm border border-purple-700 rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-purple-300 mb-2">About Reference Values</h3>
+              <p className="text-purple-200 text-sm leading-relaxed">
+                Reference values represent standardized mechanical properties for Philippine wood species. 
+                These values are used for comparison with experimental test results to assess wood quality and performance.
+                Ensure values are entered in the correct units: MPa for strength values.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

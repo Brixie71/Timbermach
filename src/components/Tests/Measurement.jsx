@@ -90,22 +90,22 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   // DEBOUNCED visualization call - only fires 300ms after user stops dragging
   const sendToBackendForVisualization = useCallback(async () => {
     if (!imageFile) return;
-    if (draggingLine) return; // ← ADD THIS LINE
+    if (draggingLine) return;
     
-    // Clear any pending visualization calls
     if (visualizationTimeoutRef.current) {
       clearTimeout(visualizationTimeoutRef.current);
     }
     
-    // Wait 300ms before making the API call
     visualizationTimeoutRef.current = setTimeout(async () => {
       try {
         const formData = new FormData();
         formData.append('image', imageFile);
-        formData.append('widthLine1', widthLine1);
-        formData.append('widthLine2', widthLine2);
-        formData.append('heightLine1', heightLine1);
-        formData.append('heightLine2', heightLine2);
+        
+        // ⭐ FIX: Round line positions here too
+        formData.append('widthLine1', Math.round(widthLine1));
+        formData.append('widthLine2', Math.round(widthLine2));
+        formData.append('heightLine1', Math.round(heightLine1));
+        formData.append('heightLine2', Math.round(heightLine2));
         formData.append('widthMM', widthMM.toFixed(2));
         formData.append('heightMM', heightMM.toFixed(2));
         
@@ -119,11 +119,10 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
           setVisualizedImage('data:image/png;base64,' + data.visualizedImage);
         }
       } catch (err) {
-        // Silently ignore errors during visualization (non-critical)
         console.log('Visualization skipped (lines may be in invalid position)');
       }
     }, 300);
-  }, [imageFile, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM]);
+  }, [imageFile, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM, draggingLine]);
   
   // Trigger debounced visualization when lines change
   useEffect(() => {
@@ -295,10 +294,12 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
     try {
       const formData = new FormData();
       formData.append('image', imageFile);
-      formData.append('widthLine1', widthLine1);
-      formData.append('widthLine2', widthLine2);
-      formData.append('heightLine1', heightLine1);
-      formData.append('heightLine2', heightLine2);
+      
+      // ⭐ FIX: Round line positions to integers (Python backend expects int)
+      formData.append('widthLine1', Math.round(widthLine1));
+      formData.append('widthLine2', Math.round(widthLine2));
+      formData.append('heightLine1', Math.round(heightLine1));
+      formData.append('heightLine2', Math.round(heightLine2));
       formData.append('cameraDistance', cameraDistance);
       
       const response = await fetch(`${API_URL}/manual-measure/calculate`, {
@@ -343,6 +344,11 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       setMeasurementCounter(prev => prev + 1);
       setCurrentStep(2);
       setIsProcessing(false);
+      
+      // Call onTestComplete with measurement data
+      if (typeof onTestComplete === 'function') {
+        onTestComplete(newMeasurement);
+      }
       
     } catch (err) {
       setError('Failed: ' + err.message);

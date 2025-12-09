@@ -3,19 +3,30 @@ import './WoodTests.css';
 import KiloNewtonGauge from './KiloNewtonGuage';
 import MoistureTestPage from './MoistureTest';
 import DimensionMeasurementPage from './Measurement';
+import TestSummary from './TestSummary';
 
 const WoodTests = () => {
-  // Use State
+  // State management
   const [selectedTest, setSelectedTest] = useState(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [subType, setSubType] = useState('');
+  const [specimenName, setSpecimenName] = useState(''); // ✅ ADDED: Specimen Name
   const [includeMeasurement, setIncludeMeasurement] = useState(false);
   const [includeMoisture, setIncludeMoisture] = useState(false);
-  const [audio] = useState(new Audio('Sounds/UI/button_press_Beep.mp3')); // UI Sound Cue
+  const [audio] = useState(new Audio('Sounds/UI/button_press_Beep.mp3'));
   const [testStarted, setTestStarted] = useState(false);
   const [currentTestStage, setCurrentTestStage] = useState('selection');
+  
+  // Test data storage
+  const [testData, setTestData] = useState({
+    testType: '',
+    subType: '',
+    specimenName: '', // ✅ ADDED
+    moistureData: null,
+    measurementData: null,
+    strengthData: null
+  });
 
-  // Card Paths 
   const tests = [
     { title: 'Compressive Test', image: "Cards/Strength Test/Card_Default.png" },
     { title: 'Shear Test', image: 'Cards/Strength Test/Card_Default.png' },
@@ -33,108 +44,174 @@ const WoodTests = () => {
     setCurrentCardIndex((prev) => (prev === tests.length - 1 ? 0 : prev + 1));
   };
 
-  // Handle test selection
   const handleTestClick = (title) => {
     audio.play();
     setSelectedTest(title);
-    resetSelections(); // Reset selections when a new test is clicked
+    resetSelections();
   };
 
-  // Reset selections
   const resetSelections = () => {
     setSubType('');
+    setSpecimenName(''); // ✅ ADDED
     setIncludeMeasurement(false);
     setIncludeMoisture(false);
     setCurrentTestStage('selection');
+    setTestData({
+      testType: '',
+      subType: '',
+      specimenName: '', // ✅ ADDED
+      moistureData: null,
+      measurementData: null,
+      strengthData: null
+    });
   };
 
-  // Validate form inputs based on selected test
+  // ✅ UPDATED: Validation requires specimen name
   const isFormValid = () => {
-    if (selectedTest === 'Compressive Test' || selectedTest === 'Shear Test') {
-      return subType !== ''; // Require subType selection
+    // Specimen name is ALWAYS required
+    if (!specimenName || specimenName.trim() === '') {
+      return false;
     }
-    return true; // No additional validation for other tests
+    
+    // For Compressive and Shear, subType is also required
+    if (selectedTest === 'Compressive Test' || selectedTest === 'Shear Test') {
+      return subType !== '';
+    }
+    
+    return true;
   };
 
-  // Close the modal
   const handleClose = () => {
     audio.play();
     setSelectedTest(null);
   };
 
-  // Determine test sequence based on selected options
   const determineTestSequence = () => {
     const sequence = [];
-    
-    // Always add optional tests first, in order
     if (includeMoisture) sequence.push('moistureTest');
     if (includeMeasurement) sequence.push('dimensionTest');
-    
-    // Strength test (KiloNewtonGauge) is ALWAYS last
-    sequence.push('mainTest');
-    
+    sequence.push('mainTest'); // Strength test always last
+    sequence.push('summary'); // Summary always at the end
     return sequence;
   };
 
   const handleBeginTest = () => {
     audio.play();
     
-    // Log test parameters
-    console.log('Beginning test:', {
-      test: selectedTest,
+    console.log('Beginning test with:', {
+      testType: selectedTest,
       subType,
+      specimenName, // ✅ ADDED
       includeMeasurement,
       includeMoisture
     });
     
-    // Immediately set test stages and start
+    // ✅ UPDATED: Initialize test data with specimen name
+    setTestData({
+      testType: selectedTest,
+      subType: subType,
+      specimenName: specimenName, // ✅ ADDED
+      moistureData: null,
+      measurementData: null,
+      strengthData: null
+    });
+    
     const testSequence = determineTestSequence();
     setCurrentTestStage(testSequence[0]);
     setTestStarted(true);
-    
-    // Close the modal immediately
     setSelectedTest(null);
   };
 
-  // Render tests in sequence
+  // Move to next test
+  const moveToNextTest = () => {
+    const sequence = determineTestSequence();
+    const currentIndex = sequence.indexOf(currentTestStage);
+    
+    if (currentIndex < sequence.length - 1) {
+      setCurrentTestStage(sequence[currentIndex + 1]);
+    }
+  };
+
+  // Move to previous test
+  const moveToPreviousTest = () => {
+    const sequence = determineTestSequence();
+    const currentIndex = sequence.indexOf(currentTestStage);
+    
+    if (currentIndex > 0) {
+      setCurrentTestStage(sequence[currentIndex - 1]);
+    } else {
+      // Return to test selection menu
+      returnToMainPage();
+    }
+  };
+
+  // Return to main selection screen
+  const returnToMainPage = () => {
+    setTestStarted(false);
+    setSelectedTest(null);
+    resetSelections();
+  };
+
+  // Handle test completion with data
+  const handleMoistureComplete = (moistureReading) => {
+    console.log('Moisture test completed:', moistureReading);
+    setTestData(prev => ({
+      ...prev,
+      moistureData: moistureReading
+    }));
+    // Auto-advance to next test after short delay
+    setTimeout(() => {
+      moveToNextTest();
+    }, 500);
+  };
+
+  const handleMeasurementComplete = (measurementResult) => {
+    console.log('Measurement test completed:', measurementResult);
+    setTestData(prev => ({
+      ...prev,
+      measurementData: measurementResult
+    }));
+    // Auto-advance to next test after short delay
+    setTimeout(() => {
+      moveToNextTest();
+    }, 500);
+  };
+
+  const handleStrengthComplete = (strengthResult) => {
+    console.log('Strength test completed:', strengthResult);
+    setTestData(prev => ({
+      ...prev,
+      strengthData: strengthResult
+    }));
+    // Auto-advance to summary after short delay
+    setTimeout(() => {
+      moveToNextTest();
+    }, 500);
+  };
+
+  // Retake handlers
+  const handleRetakeMoisture = () => {
+    setCurrentTestStage('moistureTest');
+    setTestData(prev => ({ ...prev, moistureData: null }));
+  };
+
+  const handleRetakeMeasurement = () => {
+    setCurrentTestStage('dimensionTest');
+    setTestData(prev => ({ ...prev, measurementData: null }));
+  };
+
+  const handleRetakeStrength = () => {
+    setCurrentTestStage('mainTest');
+    setTestData(prev => ({ ...prev, strengthData: null }));
+  };
+
+  // Render appropriate test stage
   const renderTestStages = () => {
-    const testSequence = determineTestSequence();
-    const currentIndex = testSequence.indexOf(currentTestStage);
-
-    const moveToNextTest = () => {
-      // Move to next test in sequence or reset
-      if (currentIndex < testSequence.length - 1) {
-        setCurrentTestStage(testSequence[currentIndex + 1]);
-      } else {
-        // All tests complete
-        setTestStarted(false);
-        setSelectedTest(null);
-      }
-    };
-
-    const moveToPreviousTest = () => {
-      // Move to the previous test in sequence or reset
-      if (currentIndex > 0) {
-        setCurrentTestStage(testSequence[currentIndex - 1]);
-      } else {
-        // If at first test, go back to test selection
-        setTestStarted(false);
-        setSelectedTest(null);
-      }
-    };
-
-    const returnToMainPage = () => {
-      // Reset everything and go back to test selection
-      setTestStarted(false);
-      setSelectedTest(null);
-      resetSelections();
-    };
-
     switch(currentTestStage) {
       case 'moistureTest':
         return (
           <MoistureTestPage
-            onTestComplete={moveToNextTest}
+            onTestComplete={handleMoistureComplete}
             onPreviousTest={moveToPreviousTest}
             onMainPageReturn={returnToMainPage}
           />
@@ -143,7 +220,8 @@ const WoodTests = () => {
       case 'dimensionTest':
         return (
           <DimensionMeasurementPage
-            onTestComplete={moveToNextTest}
+            testType={testData.testType.split(' ')[0].toLowerCase()}
+            onTestComplete={handleMeasurementComplete}
             onPreviousTest={moveToPreviousTest}
             onMainPageReturn={returnToMainPage}
           />
@@ -152,10 +230,22 @@ const WoodTests = () => {
       case 'mainTest':
         return (
           <KiloNewtonGauge
-            testType={selectedTest?.split(' ')[0]?.toLowerCase()}
-            onTestComplete={moveToNextTest}
+            testType={testData.testType.split(' ')[0].toLowerCase()}
+            onTestComplete={handleStrengthComplete}
             onPreviousTest={moveToPreviousTest}
             onMainPageReturn={returnToMainPage}
+          />
+        );
+      
+      case 'summary':
+        return (
+          <TestSummary
+            testData={testData}
+            onRetakeMoisture={handleRetakeMoisture}
+            onRetakeMeasurement={handleRetakeMeasurement}
+            onRetakeStrength={handleRetakeStrength}
+            onSaveAndFinish={returnToMainPage}
+            onBackToMenu={returnToMainPage}
           />
         );
       
@@ -170,9 +260,7 @@ const WoodTests = () => {
     <>
       {testStarted ? renderTestStages() : (
         <div className="relative min-h-screen flex items-center justify-center p-4">
-          {/* Navigation Container */}
           <div className="flex items-stretch justify-center w-full max-w-4xl gap-4 h-96">
-            {/* Left Arrow */}
             <button
               onClick={goToPreviousCard}
               className="flex-shrink-0 w-20 h-full bg-blue-500 hover:bg-blue-600 
@@ -184,7 +272,6 @@ const WoodTests = () => {
               ←
             </button>
 
-            {/* Card Display */}
             <div className="flex-grow flex justify-center">
               <button
                 onClick={() => handleTestClick(currentTest.title)}
@@ -209,7 +296,6 @@ const WoodTests = () => {
               </button>
             </div>
 
-            {/* Right Arrow */}
             <button
               onClick={goToNextCard}
               className="flex-shrink-0 w-20 h-full bg-blue-500 hover:bg-blue-600 
@@ -222,7 +308,6 @@ const WoodTests = () => {
             </button>
           </div>
 
-          {/* Card Indicator */}
           <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-2">
             {tests.map((_, index) => (
               <div
@@ -238,7 +323,7 @@ const WoodTests = () => {
         </div>
       )}
 
-      {/* Modal for test parameters */}
+      {/* ✅ UPDATED MODAL: Now includes Specimen Name input */}
       {selectedTest && (['Compressive Test', 'Shear Test', 'Flexure Test'].includes(selectedTest)) && (
         <>
           <div className="fixed inset-0 bg-black bg-opacity-50 z-40" />
@@ -256,13 +341,32 @@ const WoodTests = () => {
                 </button>
               </div>
 
-              {/* Modal Content */}
               <div className="p-6">
+                {/* ✅ NEW: Specimen Name Input - ALWAYS FIRST */}
+                <div className="mb-6 bg-blue-50 p-4 rounded-lg border-2 border-blue-300">
+                  <label className="block text-lg font-semibold mb-2 text-blue-900">
+                    Specimen Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={specimenName}
+                    onChange={(e) => setSpecimenName(e.target.value)}
+                    placeholder="e.g., Molave Sample 1, Narra A-1, etc."
+                    className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
+                    autoFocus
+                  />
+                  <p className="text-sm text-gray-600 mt-2">
+                    Enter a unique name for this wood specimen (required for database)
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   {/* Test Type Selection */}
                   {['Compressive Test', 'Shear Test'].includes(selectedTest) && (
                     <div className="mb-6">
-                      <h3 className="text-lg font-semibold mb-2">Test Type</h3>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Test Type <span className="text-red-500">*</span>
+                      </h3>
                       <div className="grid grid-cols-1 gap-4">
                         {selectedTest === 'Compressive Test' && (
                           <>
@@ -302,9 +406,18 @@ const WoodTests = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* ✅ NEW: Validation message */}
+                {!isFormValid() && (
+                  <div className="mt-4 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      {!specimenName.trim() && "⚠️ Specimen name is required"}
+                      {specimenName.trim() && !subType && selectedTest !== 'Flexure Test' && "⚠️ Please select a test type"}
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Modal Footer */}
               <div className="border-t">
                 <button
                   onClick={handleBeginTest}
@@ -325,32 +438,32 @@ const WoodTests = () => {
   );
 };
 
-// Radio option component for cleaner code
+// Radio option component
 const RadioOption = ({ value, label, selectedValue, setValue }) => (
-  <label className="flex items-center space-x-2">
+  <label className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
     <input
       type="radio"
       name="subType"
       value={value}
       checked={selectedValue === value}
       onChange={() => setValue(value)}
-      className="form-radio"
+      className="form-radio h-5 w-5"
     />
-    <span>{label}</span>
+    <span className="text-base">{label}</span>
   </label>
 );
 
-// Checkbox option component for cleaner code
+// Checkbox option component
 const CheckboxOption = ({ label, checked, setChecked, disabled = false }) => (
-  <label className="flex items-center space-x-2">
+  <label className={`flex items-center space-x-2 ${disabled ? 'opacity-60' : 'cursor-pointer hover:bg-gray-50'} p-2 rounded`}>
     <input
       type="checkbox"
       checked={checked}
-      onChange={(e) => setChecked(e.target.checked)}
-      className="form-checkbox"
+      onChange={(e) => setChecked && setChecked(e.target.checked)}
+      className="form-checkbox h-5 w-5"
       disabled={disabled}
     />
-    <span>{label}</span>
+    <span className="text-base">{label}</span>
   </label>
 );
 

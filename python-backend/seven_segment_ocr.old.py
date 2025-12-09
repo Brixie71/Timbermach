@@ -76,51 +76,6 @@ class SevenSegmentOCR:
             return None
         return json.dumps(self.calibration)
     
-    def scale_boxes_to_image(self, image: np.ndarray, calibration: Dict) -> Dict:
-        """
-        Scale calibration boxes to match current image dimensions.
-        Converts from calibration image size to current image size.
-        """
-        if 'calibration_image_size' not in calibration:
-            # If no original size stored, assume boxes are already correct
-            return calibration
-        
-        calib_width = calibration['calibration_image_size']['width']
-        calib_height = calibration['calibration_image_size']['height']
-        
-        current_height, current_width = image.shape[:2]
-        
-        scale_x = current_width / calib_width
-        scale_y = current_height / calib_height
-        
-        # Scale display box
-        scaled_display_box = {
-            'x': calibration['display_box']['x'] * scale_x,
-            'y': calibration['display_box']['y'] * scale_y,
-            'width': calibration['display_box']['width'] * scale_x,
-            'height': calibration['display_box']['height'] * scale_y
-        }
-        
-        # Scale segment boxes
-        scaled_segment_boxes = []
-        for digit_boxes in calibration['segment_boxes']:
-            scaled_digit = []
-            for box in digit_boxes:
-                scaled_digit.append({
-                    'x': box['x'] * scale_x,
-                    'y': box['y'] * scale_y,
-                    'width': box['width'] * scale_x,
-                    'height': box['height'] * scale_y
-                })
-            scaled_segment_boxes.append(scaled_digit)
-        
-        # Return scaled calibration
-        scaled_calibration = calibration.copy()
-        scaled_calibration['display_box'] = scaled_display_box
-        scaled_calibration['segment_boxes'] = scaled_segment_boxes
-        
-        return scaled_calibration
-    
     def extract_display_region(self, image: np.ndarray, display_box: Dict) -> np.ndarray:
         """Extract the display region from the image"""
         x = int(display_box['x'])
@@ -336,11 +291,8 @@ class SevenSegmentOCR:
         if self.calibration is None:
             raise ValueError("No calibration data loaded. Please calibrate first.")
         
-        # Scale calibration to match current image size
-        scaled_calibration = self.scale_boxes_to_image(image, self.calibration)
-        
         # Extract display region
-        display_region = self.extract_display_region(image, scaled_calibration['display_box'])
+        display_region = self.extract_display_region(image, self.calibration['display_box'])
         
         # Preprocess (returns grayscale)
         gray_image = self.preprocess_image(display_region)
@@ -352,11 +304,11 @@ class SevenSegmentOCR:
         results = []
         all_debug_info = []
         
-        for digit_idx, segment_boxes in enumerate(scaled_calibration['segment_boxes']):
+        for digit_idx, segment_boxes in enumerate(self.calibration['segment_boxes']):
             digit, binary, states, segment_debug = self.recognize_digit(
                 gray_image, 
                 segment_boxes, 
-                scaled_calibration['display_box'],
+                self.calibration['display_box'],
                 is_inverted=is_inverted,
                 method=self.detection_method
             )
@@ -418,16 +370,13 @@ class SevenSegmentOCR:
         
         vis_image = image.copy()
         
-        # Scale calibration to match current image size
-        scaled_calibration = self.scale_boxes_to_image(image, self.calibration)
-        
         # Extract and preprocess display region
-        display_region = self.extract_display_region(image, scaled_calibration['display_box'])
+        display_region = self.extract_display_region(image, self.calibration['display_box'])
         gray_image = self.preprocess_image(display_region)
         is_inverted = self.detect_display_inversion(gray_image)
         
         # Draw display box (cyan)
-        db = scaled_calibration['display_box']
+        db = self.calibration['display_box']
         cv2.rectangle(
             vis_image,
             (int(db['x']), int(db['y'])),
@@ -449,12 +398,12 @@ class SevenSegmentOCR:
         
         segment_labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
         
-        for digit_idx, segment_boxes in enumerate(scaled_calibration['segment_boxes']):
+        for digit_idx, segment_boxes in enumerate(self.calibration['segment_boxes']):
             # Recognize this digit to get segment states
             _, binary, states, debug_info = self.recognize_digit(
                 gray_image,
                 segment_boxes,
-                scaled_calibration['display_box'],
+                self.calibration['display_box'],
                 is_inverted=is_inverted,
                 method=self.detection_method
             )

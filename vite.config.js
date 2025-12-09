@@ -14,7 +14,11 @@ export default defineConfig({
     host: true, // Allow LAN access
     port: 5173,
     proxy: {
-      '/timber-api': 'http://127.0.0.1:8000/',  // Point this to your Laravel backend
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+      }  // Point this to your Laravel backend
     }
   }
 });
