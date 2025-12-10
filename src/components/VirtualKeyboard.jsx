@@ -6,12 +6,20 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
   const [input, setInput] = useState(initialValue);
   const [isShift, setIsShift] = useState(false);
   const [isCapsLock, setIsCapsLock] = useState(false);
+  const [showSpecialChars, setShowSpecialChars] = useState(false);
 
   const keys = {
     row1: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     row2: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
     row3: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
     row4: ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+  };
+
+  const specialChars = {
+    row1: ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')'],
+    row2: ['-', '_', '=', '+', '[', ']', '{', '}', '\\', '|'],
+    row3: [';', ':', '\'', '"', ',', '.', '<', '>', '/', '?'],
+    row4: ['`', '~', '€', '£', '¥', '₱', '°', '•', '±', '§'],
   };
 
   const handleKeyPress = (key) => {
@@ -87,9 +95,9 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
 
       {/* Keyboard Keys */}
       <div className="p-2">
-        {/* Number Row */}
+        {/* Row 1 - Numbers or Special Chars */}
         <div className="flex gap-1 mb-1 justify-center">
-          {keys.row1.map((key) => (
+          {(showSpecialChars ? specialChars.row1 : keys.row1).map((key) => (
             <button
               key={key}
               onClick={() => handleKeyPress(key)}
@@ -99,14 +107,14 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
                   : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
               }`}
             >
-              {isShift || isCapsLock ? key.toUpperCase() : key}
+              {key}
             </button>
           ))}
         </div>
 
-        {/* First Letter Row */}
+        {/* Row 2 - Letters or Special Chars */}
         <div className="flex gap-1 mb-1 justify-center">
-          {keys.row2.map((key) => (
+          {(showSpecialChars ? specialChars.row2 : keys.row2).map((key) => (
             <button
               key={key}
               onClick={() => handleKeyPress(key)}
@@ -116,14 +124,14 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
                   : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
               }`}
             >
-              {isShift || isCapsLock ? key.toUpperCase() : key}
+              {showSpecialChars ? key : (isShift || isCapsLock ? key.toUpperCase() : key)}
             </button>
           ))}
         </div>
 
-        {/* Second Letter Row */}
+        {/* Row 3 - Letters or Special Chars */}
         <div className="flex gap-1 mb-1 justify-center">
-          {keys.row3.map((key) => (
+          {(showSpecialChars ? specialChars.row3 : keys.row3).map((key) => (
             <button
               key={key}
               onClick={() => handleKeyPress(key)}
@@ -133,28 +141,30 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
                   : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
               }`}
             >
-              {isShift || isCapsLock ? key.toUpperCase() : key}
+              {showSpecialChars ? key : (isShift || isCapsLock ? key.toUpperCase() : key)}
             </button>
           ))}
         </div>
 
-        {/* Third Letter Row with Shift */}
+        {/* Row 4 - Letters/Special Chars with Shift */}
         <div className="flex gap-1 mb-1 justify-center">
-          <button
-            onClick={toggleShift}
-            className={`px-4 py-3 text-xs font-semibold transition-colors ${
-              isShift
-                ? darkMode
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-blue-500 text-white'
-                : darkMode
-                ? 'bg-gray-700 text-gray-100 hover:bg-gray-600 active:bg-gray-500'
-                : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
-            }`}
-          >
-            ⇧ Shift
-          </button>
-          {keys.row4.map((key) => (
+          {!showSpecialChars && (
+            <button
+              onClick={toggleShift}
+              className={`px-4 py-3 text-xs font-semibold transition-colors ${
+                isShift
+                  ? darkMode
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-blue-500 text-white'
+                  : darkMode
+                  ? 'bg-gray-700 text-gray-100 hover:bg-gray-600 active:bg-gray-500'
+                  : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
+              }`}
+            >
+              ⇧ Shift
+            </button>
+          )}
+          {(showSpecialChars ? specialChars.row4 : keys.row4).map((key) => (
             <button
               key={key}
               onClick={() => handleKeyPress(key)}
@@ -164,7 +174,7 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
                   : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
               }`}
             >
-              {isShift || isCapsLock ? key.toUpperCase() : key}
+              {showSpecialChars ? key : (isShift || isCapsLock ? key.toUpperCase() : key)}
             </button>
           ))}
           <button
@@ -179,12 +189,28 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
           </button>
         </div>
 
-        {/* Bottom Row - Space, Enter, etc */}
+        {/* Bottom Row - Special buttons */}
         <div className="flex gap-1">
+          {!showSpecialChars && (
+            <button
+              onClick={toggleCapsLock}
+              className={`px-4 py-3 text-xs font-semibold transition-colors ${
+                isCapsLock
+                  ? darkMode
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-blue-500 text-white'
+                  : darkMode
+                  ? 'bg-gray-700 text-gray-100 hover:bg-gray-600 active:bg-gray-500'
+                  : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
+              }`}
+            >
+              ⇪ Caps
+            </button>
+          )}
           <button
-            onClick={toggleCapsLock}
+            onClick={() => setShowSpecialChars(!showSpecialChars)}
             className={`px-4 py-3 text-xs font-semibold transition-colors ${
-              isCapsLock
+              showSpecialChars
                 ? darkMode
                   ? 'bg-blue-600 text-white'
                   : 'bg-blue-500 text-white'
@@ -193,7 +219,7 @@ const VirtualKeyboard = ({ onKeyPress, onClose, darkMode = false, initialValue =
                 : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
             }`}
           >
-            ⇪ Caps
+            {showSpecialChars ? 'ABC' : '#+='}
           </button>
           <button
             onClick={handleClear}

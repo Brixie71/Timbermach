@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import './WoodTests.css';
+import { useTouchControls } from '../../Utils/TouchControls';
 import KiloNewtonGauge from './KiloNewtonGuage';
 import MoistureTestPage from './MoistureTest';
 import DimensionMeasurementPage from './Measurement';
 import TestSummary from './TestSummary';
 
-const WoodTests = () => {
+const WoodTests = ({ darkMode = false }) => {
   // State management
   const [selectedTest, setSelectedTest] = useState(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [subType, setSubType] = useState('');
-  const [specimenName, setSpecimenName] = useState(''); // ✅ ADDED: Specimen Name
+  const [specimenName, setSpecimenName] = useState('');
   const [includeMeasurement, setIncludeMeasurement] = useState(false);
   const [includeMoisture, setIncludeMoisture] = useState(false);
   const [audio] = useState(new Audio('Sounds/UI/button_press_Beep.mp3'));
@@ -21,27 +22,47 @@ const WoodTests = () => {
   const [testData, setTestData] = useState({
     testType: '',
     subType: '',
-    specimenName: '', // ✅ ADDED
+    specimenName: '',
     moistureData: null,
     measurementData: null,
     strengthData: null
   });
 
+  // Updated with correct image paths from your code
   const tests = [
-    { title: 'Compressive Test', image: "Cards/Strength Test/Card_Default.png" },
-    { title: 'Shear Test', image: 'Cards/Strength Test/Card_Default.png' },
-    { title: 'Flexure Test', image: 'Cards/Strength Test/Card_Default.png' }
+    { title: 'COMPRESSIVE TEST', image: 'Cards/Strength Test/Compressive_Card.png' },
+    { title: 'SHEAR TEST', image: 'Cards/Strength Test/Shear_Card.png' },
+    { title: 'FLEXURE TEST', image: 'Cards/Strength Test/Flexure_Card.png' }
   ];
 
-  // Navigation functions
+  // Add touch controls for swiping
+  useTouchControls({
+    onSwipeLeft: () => {
+      if (!selectedTest) {
+        goToNextCard();
+      }
+    },
+    onSwipeRight: () => {
+      if (!selectedTest) {
+        goToPreviousCard();
+      }
+    },
+    swipeThreshold: 50,
+  });
+
+  // Navigation functions - NO LOOPS
   const goToPreviousCard = () => {
-    audio.play();
-    setCurrentCardIndex((prev) => (prev === 0 ? tests.length - 1 : prev - 1));
+    if (currentCardIndex > 0) {
+      audio.play();
+      setCurrentCardIndex(prev => prev - 1);
+    }
   };
 
   const goToNextCard = () => {
-    audio.play();
-    setCurrentCardIndex((prev) => (prev === tests.length - 1 ? 0 : prev + 1));
+    if (currentCardIndex < tests.length - 1) {
+      audio.play();
+      setCurrentCardIndex(prev => prev + 1);
+    }
   };
 
   const handleTestClick = (title) => {
@@ -52,29 +73,26 @@ const WoodTests = () => {
 
   const resetSelections = () => {
     setSubType('');
-    setSpecimenName(''); // ✅ ADDED
+    setSpecimenName('');
     setIncludeMeasurement(false);
     setIncludeMoisture(false);
     setCurrentTestStage('selection');
     setTestData({
       testType: '',
       subType: '',
-      specimenName: '', // ✅ ADDED
+      specimenName: '',
       moistureData: null,
       measurementData: null,
       strengthData: null
     });
   };
 
-  // ✅ UPDATED: Validation requires specimen name
   const isFormValid = () => {
-    // Specimen name is ALWAYS required
     if (!specimenName || specimenName.trim() === '') {
       return false;
     }
     
-    // For Compressive and Shear, subType is also required
-    if (selectedTest === 'Compressive Test' || selectedTest === 'Shear Test') {
+    if (selectedTest === 'COMPRESSIVE TEST' || selectedTest === 'SHEAR TEST') {
       return subType !== '';
     }
     
@@ -90,381 +108,381 @@ const WoodTests = () => {
     const sequence = [];
     if (includeMoisture) sequence.push('moistureTest');
     if (includeMeasurement) sequence.push('dimensionTest');
-    sequence.push('mainTest'); // Strength test always last
-    sequence.push('summary'); // Summary always at the end
+    sequence.push('mainTest');
+    sequence.push('summary');
     return sequence;
   };
 
   const handleBeginTest = () => {
     audio.play();
     
-    console.log('Beginning test with:', {
-      testType: selectedTest,
-      subType,
-      specimenName, // ✅ ADDED
-      includeMeasurement,
-      includeMoisture
-    });
+    if (!isFormValid()) {
+      alert('Please fill in all required fields before starting the test.');
+      return;
+    }
     
-    // ✅ UPDATED: Initialize test data with specimen name
-    setTestData({
+    setTestData(prev => ({
+      ...prev,
       testType: selectedTest,
       subType: subType,
-      specimenName: specimenName, // ✅ ADDED
-      moistureData: null,
-      measurementData: null,
-      strengthData: null
-    });
+      specimenName: specimenName
+    }));
     
-    const testSequence = determineTestSequence();
-    setCurrentTestStage(testSequence[0]);
     setTestStarted(true);
-    setSelectedTest(null);
+    
+    const sequence = determineTestSequence();
+    if (sequence.length > 0) {
+      setCurrentTestStage(sequence[0]);
+    }
   };
 
-  // Move to next test
-  const moveToNextTest = () => {
-    const sequence = determineTestSequence();
-    const currentIndex = sequence.indexOf(currentTestStage);
+  const handleMoistureComplete = (data) => {
+    setTestData(prev => ({
+      ...prev,
+      moistureData: data
+    }));
     
-    if (currentIndex < sequence.length - 1) {
+    const sequence = determineTestSequence();
+    const currentIndex = sequence.indexOf('moistureTest');
+    if (currentIndex !== -1 && currentIndex + 1 < sequence.length) {
       setCurrentTestStage(sequence[currentIndex + 1]);
     }
   };
 
-  // Move to previous test
-  const moveToPreviousTest = () => {
-    const sequence = determineTestSequence();
-    const currentIndex = sequence.indexOf(currentTestStage);
+  const handleMeasurementComplete = (data) => {
+    setTestData(prev => ({
+      ...prev,
+      measurementData: data
+    }));
     
-    if (currentIndex > 0) {
-      setCurrentTestStage(sequence[currentIndex - 1]);
-    } else {
-      // Return to test selection menu
-      returnToMainPage();
+    const sequence = determineTestSequence();
+    const currentIndex = sequence.indexOf('dimensionTest');
+    if (currentIndex !== -1 && currentIndex + 1 < sequence.length) {
+      setCurrentTestStage(sequence[currentIndex + 1]);
     }
   };
 
-  // Return to main selection screen
-  const returnToMainPage = () => {
+  const handleTestComplete = (data) => {
+    setTestData(prev => ({
+      ...prev,
+      strengthData: data
+    }));
+    
+    setCurrentTestStage('summary');
+  };
+
+  const handleSummaryComplete = () => {
     setTestStarted(false);
     setSelectedTest(null);
     resetSelections();
   };
 
-  // Handle test completion with data
-  const handleMoistureComplete = (moistureReading) => {
-    console.log('Moisture test completed:', moistureReading);
-    setTestData(prev => ({
-      ...prev,
-      moistureData: moistureReading
-    }));
-    // Auto-advance to next test after short delay
-    setTimeout(() => {
-      moveToNextTest();
-    }, 500);
-  };
-
-  const handleMeasurementComplete = (measurementResult) => {
-    console.log('Measurement test completed:', measurementResult);
-    setTestData(prev => ({
-      ...prev,
-      measurementData: measurementResult
-    }));
-    // Auto-advance to next test after short delay
-    setTimeout(() => {
-      moveToNextTest();
-    }, 500);
-  };
-
-  const handleStrengthComplete = (strengthResult) => {
-    console.log('Strength test completed:', strengthResult);
-    setTestData(prev => ({
-      ...prev,
-      strengthData: strengthResult
-    }));
-    // Auto-advance to summary after short delay
-    setTimeout(() => {
-      moveToNextTest();
-    }, 500);
-  };
-
-  // Retake handlers
-  const handleRetakeMoisture = () => {
-    setCurrentTestStage('moistureTest');
-    setTestData(prev => ({ ...prev, moistureData: null }));
-  };
-
-  const handleRetakeMeasurement = () => {
-    setCurrentTestStage('dimensionTest');
-    setTestData(prev => ({ ...prev, measurementData: null }));
-  };
-
-  const handleRetakeStrength = () => {
-    setCurrentTestStage('mainTest');
-    setTestData(prev => ({ ...prev, strengthData: null }));
-  };
-
-  // Render appropriate test stage
-  const renderTestStages = () => {
-    switch(currentTestStage) {
-      case 'moistureTest':
-        return (
-          <MoistureTestPage
-            onTestComplete={handleMoistureComplete}
-            onPreviousTest={moveToPreviousTest}
-            onMainPageReturn={returnToMainPage}
-          />
-        );
-      
-      case 'dimensionTest':
-        return (
-          <DimensionMeasurementPage
-            testType={testData.testType.split(' ')[0].toLowerCase()}
-            onTestComplete={handleMeasurementComplete}
-            onPreviousTest={moveToPreviousTest}
-            onMainPageReturn={returnToMainPage}
-          />
-        );
-      
-      case 'mainTest':
-        return (
-          <KiloNewtonGauge
-            testType={testData.testType.split(' ')[0].toLowerCase()}
-            onTestComplete={handleStrengthComplete}
-            onPreviousTest={moveToPreviousTest}
-            onMainPageReturn={returnToMainPage}
-          />
-        );
-      
-      case 'summary':
-        return (
-          <TestSummary
-            testData={testData}
-            onRetakeMoisture={handleRetakeMoisture}
-            onRetakeMeasurement={handleRetakeMeasurement}
-            onRetakeStrength={handleRetakeStrength}
-            onSaveAndFinish={returnToMainPage}
-            onBackToMenu={returnToMainPage}
-          />
-        );
-      
-      default:
-        return null;
+  // Render test stages
+  if (testStarted) {
+    if (currentTestStage === 'moistureTest') {
+      return (
+        <MoistureTestPage
+          onComplete={handleMoistureComplete}
+          specimenName={specimenName}
+        />
+      );
     }
-  };
+    
+    if (currentTestStage === 'dimensionTest') {
+      return (
+        <DimensionMeasurementPage
+          onComplete={handleMeasurementComplete}
+          specimenName={specimenName}
+          testType={selectedTest}
+        />
+      );
+    }
+    
+    if (currentTestStage === 'mainTest') {
+      return (
+        <KiloNewtonGauge
+          testType={selectedTest}
+          subType={subType}
+          specimenName={specimenName}
+          moistureData={testData.moistureData}
+          measurementData={testData.measurementData}
+          onTestComplete={handleTestComplete}
+        />
+      );
+    }
+    
+    if (currentTestStage === 'summary') {
+      return (
+        <TestSummary
+          testData={testData}
+          onComplete={handleSummaryComplete}
+        />
+      );
+    }
+  }
 
-  const currentTest = tests[currentCardIndex];
-
-  return (
-    <>
-      {testStarted ? renderTestStages() : (
-        <div className="relative min-h-screen flex items-center justify-center p-4">
-          <div className="flex items-stretch justify-center w-full max-w-4xl gap-4 h-96">
-            <button
-              onClick={goToPreviousCard}
-              className="flex-shrink-0 w-20 h-full bg-blue-500 hover:bg-blue-600 
-                         text-white rounded-lg shadow-lg transition-all duration-300 
-                         flex items-center justify-center text-4xl font-bold
-                         active:scale-95"
-              aria-label="Previous card"
-            >
-              ←
-            </button>
-
-            <div className="flex-grow flex justify-center">
-              <button
-                onClick={() => handleTestClick(currentTest.title)}
-                className={`bg-white rounded-lg shadow-xl 
-                            transition-all duration-300 ease-in-out
-                            transform hover:scale-105
-                            border-4 w-full max-w-md h-96
-                            ${selectedTest === currentTest.title ? 'border-blue-500' : 'border-gray-300'}`}
-              >
-                <div className="h-full flex flex-col">
-                  <img
-                    src={currentTest.image}
-                    alt={currentTest.title}
-                    className="w-full h-64 object-cover rounded-t-lg"
-                  />
-                  <div className="p-6 flex-grow flex items-center justify-center bg-white rounded-b-lg">
-                    <h3 className="text-2xl font-bold text-black text-center">
-                      {currentTest.title}
-                    </h3>
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <button
-              onClick={goToNextCard}
-              className="flex-shrink-0 w-20 h-full bg-blue-500 hover:bg-blue-600 
-                        text-white rounded-lg shadow-lg transition-all duration-300 
-                        flex items-center justify-center text-4xl font-bold
-                        active:scale-95"
-              aria-label="Next card"
-            >
-              →
-            </button>
-          </div>
-
-          <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-2">
-            {tests.map((_, index) => (
-              <div
-                key={index}
-                className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                  index === currentCardIndex 
-                    ? 'bg-blue-500 w-8' 
-                    : 'bg-gray-400'
-                }`}
+  // Main selection UI
+  if (!selectedTest) {
+    return (
+      <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+        {/* Card Container - Centered, Full Width */}
+        <div className="flex-1 flex items-center justify-center px-12">
+          <div 
+            onClick={() => handleTestClick(tests[currentCardIndex].title)}
+            className={`w-full max-w-4xl border-2 cursor-pointer hover:shadow-xl transition-shadow flex flex-col ${
+              darkMode 
+                ? 'border-gray-600 bg-gray-800 hover:shadow-gray-700' 
+                : 'border-black bg-gray-200'
+            }`}
+            style={{ height: '420px' }}
+          >
+            {/* Image Area - Top Part */}
+            <div className={`flex-1 flex items-center justify-center overflow-hidden ${
+              darkMode ? 'bg-gray-800' : 'bg-gray-200'
+            }`}>
+              <img 
+                src={tests[currentCardIndex].image} 
+                alt={tests[currentCardIndex].title}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  console.error('Image failed to load:', tests[currentCardIndex].image);
+                  // Keep the gray background as fallback
+                }}
               />
-            ))}
+            </div>
+            
+            {/* Label - Bottom Part */}
+            <div className={`h-[80px] border-t-2 flex items-center justify-center ${
+              darkMode 
+                ? 'bg-gray-700 border-gray-600 text-gray-100' 
+                : 'bg-gray-300 border-black text-gray-900'
+            }`}>
+              <h2 className="text-3xl font-bold tracking-wide">
+                {tests[currentCardIndex].title}
+              </h2>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* ✅ UPDATED MODAL: Now includes Specimen Name input */}
-      {selectedTest && (['Compressive Test', 'Shear Test', 'Flexure Test'].includes(selectedTest)) && (
-        <>
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-40" />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-              <div className="flex justify-between items-center border-b p-4">
-                <h2 className="text-2xl font-bold">{selectedTest} Parameters</h2>
-                <button
-                  onClick={handleClose}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+        {/* Navigation Dots - Below Card */}
+        <div className="flex items-center justify-center gap-3 pb-8">
+          {tests.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => {
+                if (index !== currentCardIndex) {
+                  audio.play();
+                  setCurrentCardIndex(index);
+                }
+              }}
+              className={`w-4 h-4 rounded-full transition-all border-2 ${
+                darkMode
+                  ? index === currentCardIndex
+                    ? 'bg-blue-400 border-blue-400'
+                    : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                  : index === currentCardIndex
+                    ? 'bg-gray-400 border-gray-400'
+                    : 'bg-white border-gray-400 hover:bg-gray-200'
+              }`}
+              aria-label={`Go to ${tests[index].title}`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-              <div className="p-6">
-                {/* ✅ NEW: Specimen Name Input - ALWAYS FIRST */}
-                <div className="mb-6 bg-blue-50 p-4 rounded-lg border-2 border-blue-300">
-                  <label className="block text-lg font-semibold mb-2 text-blue-900">
-                    Specimen Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={specimenName}
-                    onChange={(e) => setSpecimenName(e.target.value)}
-                    placeholder="e.g., Molave Sample 1, Narra A-1, etc."
-                    className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                    autoFocus
-                  />
-                  <p className="text-sm text-gray-600 mt-2">
-                    Enter a unique name for this wood specimen (required for database)
-                  </p>
-                </div>
+  // Test configuration screen
+  return (
+    <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+      {/* Header */}
+      <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${
+        darkMode 
+          ? 'border-gray-700 bg-gray-800 text-gray-100' 
+          : 'border-black bg-gray-100 text-gray-900'
+      }`}>
+        <h2 className="text-xl font-bold">{selectedTest}</h2>
+        <button
+          onClick={handleClose}
+          className={`text-3xl font-bold transition-colors ${
+            darkMode 
+              ? 'text-gray-200 hover:text-red-400' 
+              : 'text-gray-900 hover:text-red-600'
+          }`}
+        >
+          ×
+        </button>
+      </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Test Type Selection */}
-                  {['Compressive Test', 'Shear Test'].includes(selectedTest) && (
-                    <div className="mb-6">
-                      <h3 className="text-lg font-semibold mb-2">
-                        Test Type <span className="text-red-500">*</span>
-                      </h3>
-                      <div className="grid grid-cols-1 gap-4">
-                        {selectedTest === 'Compressive Test' && (
-                          <>
-                            <RadioOption value="parallel" label="Parallel to Grain" selectedValue={subType} setValue={setSubType} />
-                            <RadioOption value="perpendicular" label="Perpendicular to Grain" selectedValue={subType} setValue={setSubType} />
-                          </>
-                        )}
-                        {selectedTest === 'Shear Test' && (
-                          <>
-                            <RadioOption value="single" label="Single Shear" selectedValue={subType} setValue={setSubType} />
-                            <RadioOption value="double" label="Double Shear" selectedValue={subType} setValue={setSubType} />
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
+      {/* Configuration Form */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="h-full space-y-0">
+          {/* Specimen Name Input */}
+          <div className="border-b-2 border-gray-300 p-6">
+            <label className={`block text-sm font-semibold mb-2 ${
+              darkMode ? 'text-gray-300' : 'text-gray-900'
+            }`}>
+              Specimen Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={specimenName}
+              onChange={(e) => setSpecimenName(e.target.value)}
+              placeholder="Enter specimen name"
+              className={`w-full px-4 py-3 border-2 focus:outline-none ${
+                darkMode
+                  ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder-gray-500 focus:border-blue-400'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
+              }`}
+            />
+          </div>
 
-                  {/* Additional Tests Selection */}
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold mb-2">Additional Tests</h3>
-                    <div className="grid grid-cols-1 gap-4">
-                      <CheckboxOption 
-                        label="Measure Dimensions" 
-                        checked={includeMeasurement} 
-                        setChecked={setIncludeMeasurement} 
-                      />
-                      <CheckboxOption 
-                        label="Moisture Test" 
-                        checked={includeMoisture} 
-                        setChecked={setIncludeMoisture} 
-                      />
-                      <CheckboxOption 
-                        label={selectedTest} 
-                        checked={true} 
-                        disabled 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ✅ NEW: Validation message */}
-                {!isFormValid() && (
-                  <div className="mt-4 bg-yellow-50 border border-yellow-300 rounded-lg p-3">
-                    <p className="text-sm text-yellow-800">
-                      {!specimenName.trim() && "⚠️ Specimen name is required"}
-                      {specimenName.trim() && !subType && selectedTest !== 'Flexure Test' && "⚠️ Please select a test type"}
-                    </p>
-                  </div>
+          {/* Sub-type Selection */}
+          {(selectedTest === 'COMPRESSIVE TEST' || selectedTest === 'SHEAR TEST') && (
+            <div className="border-b-2 border-gray-300">
+              <label className={`block text-sm font-semibold px-6 pt-6 pb-4 ${
+                darkMode ? 'text-gray-300' : 'text-gray-900'
+              }`}>
+                Test Sub-type <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-2">
+                {selectedTest === 'COMPRESSIVE TEST' ? (
+                  <>
+                    <button
+                      onClick={() => { audio.play(); setSubType('Parallel'); }}
+                      className={`py-8 px-6 text-xl font-semibold transition-all border-r-2 ${
+                        subType === 'Parallel'
+                          ? darkMode
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-blue-500 text-white border-blue-500'
+                          : darkMode
+                            ? 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
+                            : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      Parallel to Grain
+                    </button>
+                    <button
+                      onClick={() => { audio.play(); setSubType('Perpendicular'); }}
+                      className={`py-8 px-6 text-xl font-semibold transition-all ${
+                        subType === 'Perpendicular'
+                          ? darkMode
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-500 text-white'
+                          : darkMode
+                            ? 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+                            : 'bg-white text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      Perpendicular to Grain
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => { audio.play(); setSubType('Single'); }}
+                      className={`py-8 px-6 text-xl font-semibold transition-all border-r-2 ${
+                        subType === 'Single'
+                          ? darkMode
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-blue-500 text-white border-blue-500'
+                          : darkMode
+                            ? 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'
+                            : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      Single Shear
+                    </button>
+                    <button
+                      onClick={() => { audio.play(); setSubType('Double'); }}
+                      className={`py-8 px-6 text-xl font-semibold transition-all ${
+                        subType === 'Double'
+                          ? darkMode
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-500 text-white'
+                          : darkMode
+                            ? 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+                            : 'bg-white text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      Double Shear
+                    </button>
+                  </>
                 )}
               </div>
+            </div>
+          )}
 
-              <div className="border-t">
-                <button
-                  onClick={handleBeginTest}
-                  disabled={!isFormValid()}
-                  className={`w-full py-4 font-medium transition-colors text-lg rounded-b-lg
-                              ${isFormValid()
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-                >
-                  Begin Test
-                </button>
+          {/* Optional Tests */}
+          <div className="flex-1 border-b-2 border-gray-300">
+            <label className={`block text-sm font-semibold px-6 pt-6 pb-4 ${
+              darkMode ? 'text-gray-300' : 'text-gray-900'
+            }`}>
+              Test Procedure
+            </label>
+            <div className="flex flex-col">
+              <label className={`flex items-center gap-4 px-6 py-6 border-b-2 cursor-pointer transition-colors ${
+                darkMode
+                  ? 'border-gray-600 bg-gray-800 hover:bg-gray-700'
+                  : 'border-gray-300 bg-white hover:bg-gray-50'
+              } ${includeMoisture ? (darkMode ? 'bg-blue-900' : 'bg-blue-100') : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={includeMoisture}
+                  onChange={(e) => { audio.play(); setIncludeMoisture(e.target.checked); }}
+                  className="w-6 h-6"
+                />
+                <span className={`font-medium text-lg ${
+                  darkMode ? 'text-gray-200' : 'text-gray-900'
+                }`}>
+                  Moisture Test
+                </span>
+              </label>
+              <label className={`flex items-center gap-4 px-6 py-6 border-b-2 cursor-pointer transition-colors ${
+                darkMode
+                  ? 'border-gray-600 bg-gray-800 hover:bg-gray-700'
+                  : 'border-gray-300 bg-white hover:bg-gray-50'
+              } ${includeMeasurement ? (darkMode ? 'bg-blue-900' : 'bg-blue-100') : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={includeMeasurement}
+                  onChange={(e) => { audio.play(); setIncludeMeasurement(e.target.checked); }}
+                  className="w-6 h-6"
+                />
+                <span className={`font-medium text-lg ${
+                  darkMode ? 'text-gray-200' : 'text-gray-900'
+                }`}>
+                  Measurement Test
+                </span>
+              </label>
+              <div className={`flex items-center gap-4 px-6 py-6 ${
+                darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+              }`}>
+                <span className="font-medium text-lg">
+                  Strength Test
+                </span>
               </div>
             </div>
           </div>
-        </>
-      )}
-    </>
+
+          {/* Begin Test Button - Fixed at bottom */}
+          <button
+            onClick={handleBeginTest}
+            disabled={!isFormValid()}
+            className={`w-full py-8 text-2xl font-bold transition-all ${
+              isFormValid()
+                ? 'bg-green-500 text-white hover:bg-green-600 active:scale-[0.99]'
+                : darkMode
+                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            START
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
-
-// Radio option component
-const RadioOption = ({ value, label, selectedValue, setValue }) => (
-  <label className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-    <input
-      type="radio"
-      name="subType"
-      value={value}
-      checked={selectedValue === value}
-      onChange={() => setValue(value)}
-      className="form-radio h-5 w-5"
-    />
-    <span className="text-base">{label}</span>
-  </label>
-);
-
-// Checkbox option component
-const CheckboxOption = ({ label, checked, setChecked, disabled = false }) => (
-  <label className={`flex items-center space-x-2 ${disabled ? 'opacity-60' : 'cursor-pointer hover:bg-gray-50'} p-2 rounded`}>
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={(e) => setChecked && setChecked(e.target.checked)}
-      className="form-checkbox h-5 w-5"
-      disabled={disabled}
-    />
-    <span className="text-base">{label}</span>
-  </label>
-);
 
 export default WoodTests;

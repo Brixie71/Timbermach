@@ -146,16 +146,6 @@ export const useTouchControls = (options = {}) => {
 };
 
 /**
- * Higher-order component to add touch controls to any component
- */
-export const withTouchControls = (Component, touchOptions) => {
-  return (props) => {
-    useTouchControls(touchOptions);
-    return <Component {...props} />;
-  };
-};
-
-/**
  * Utility to prevent default touch behaviors
  */
 export const preventDefaultTouch = (element) => {
