@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import SpecimenView from './SpecimenView';
+import DataEdit from './SpecimenEdit';
 
 // ============================================================================
 // STRESS CALCULATION UTILITIES
@@ -391,6 +392,7 @@ const Dash = ({ darkMode = false }) => {
   
   // View state
   const [showSpecimenView, setShowSpecimenView] = useState(false);
+  const [showEditView, setShowEditView] = useState(false);
   const [selectedSpecimen, setSelectedSpecimen] = useState(null);
   const [selectedDataType, setSelectedDataType] = useState(null);
   
@@ -402,6 +404,7 @@ const Dash = ({ darkMode = false }) => {
   const [deleteItem, setDeleteItem] = useState(null);
   const [deleteItemId, setDeleteItemId] = useState(null);
   const [deleteDataType, setDeleteDataType] = useState(null);
+  
 
   const tabs = [
     { id: 'compressive', label: 'Compressive' },
@@ -482,7 +485,7 @@ const Dash = ({ darkMode = false }) => {
   const handleEdit = (item, type) => {
     setEditData(item);
     setEditDataType(type);
-    setEditModalOpen(true);
+    setShowEditView(true);  // Changed from setEditModalOpen
   };
 
   const handleDelete = (item, itemId, type) => {
@@ -536,6 +539,28 @@ const Dash = ({ darkMode = false }) => {
         dataType={selectedDataType}
         darkMode={darkMode}
         onClose={() => setShowSpecimenView(false)}
+      />
+    );
+  }
+
+  // Show DataEdit if selected
+  if (showEditView) {
+    return (
+      <DataEdit
+        data={editData}
+        dataType={editDataType}
+        darkMode={darkMode}
+        onClose={() => {
+          setShowEditView(false);
+          setEditData(null);
+          setEditDataType(null);
+        }}
+        onSave={(updatedData) => {
+          fetchAllData(); // Refresh the table
+          setShowEditView(false);
+          setEditData(null);
+          setEditDataType(null);
+        }}
       />
     );
   }

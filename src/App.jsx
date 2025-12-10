@@ -57,7 +57,7 @@ function App() {
     
     switch (activeItem) {
       case 'strength-test':
-        return <WoodTests />;
+        return <WoodTests darkMode={darkMode} />;
         
       case 'settings':
         return (
