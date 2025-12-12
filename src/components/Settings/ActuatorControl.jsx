@@ -1,515 +1,552 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { Play, Square, ArrowLeft, ArrowRight, Navigation, Settings, Target, RotateCcw } from 'lucide-react';
 
-const ActuatorControl = () => {
-  const [connectionStatus, setConnectionStatus] = useState('Connecting...');
-  const [isConnected, setIsConnected] = useState(false);
-  const [lastCommand, setLastCommand] = useState('');
-  const [connectionError, setConnectionError] = useState('');
-  const [activeButton, setActiveButton] = useState(null);
-  
-  // Position tracking
-  const [currentPosition, setCurrentPosition] = useState(500);
-  const [midpoint, setMidpoint] = useState(500);
-  const [maxDistanceLeft, setMaxDistanceLeft] = useState(200);
-  const [maxDistanceRight, setMaxDistanceRight] = useState(200);
+const ActuatorControl = ({ onOpenCalibration, onOpenSettings }) => {
+  const [position, setPosition] = useState(0);
+  const [midpoint, setMidpoint] = useState(0);
+  const [isMoving, setIsMoving] = useState(false);
   const [isCalibrated, setIsCalibrated] = useState(false);
+  const [status, setStatus] = useState('Disconnected');
+  const [locationStatus, setLocationStatus] = useState('UNKNOWN');
+  const [serialLog, setSerialLog] = useState([]);
+  const [ws, setWs] = useState(null);
   
-  // Test sequence
-  const [isRunningTest, setIsRunningTest] = useState(false);
-  const [testProgress, setTestProgress] = useState('');
-  const [testType, setTestType] = useState('');
+  // Manual control states
+  const [manualSpeed, setManualSpeed] = useState(50);
+  const [isManualControlActive, setIsManualControlActive] = useState(false);
+  const [manualDirection, setManualDirection] = useState(null);
   
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const holdIntervalRef = useRef(null);
+  const logRef = useRef(null);
+  const holdTimerRef = useRef(null);
+  const speedCommandIntervalRef = useRef(null);
 
-  // Flask API
-  const FLASK_API = 'http://localhost:5000';
-
+  // WebSocket connection
   useEffect(() => {
-    connectWebSocket();
-    loadCalibration();
-
+    const websocket = new WebSocket('ws://localhost:8080');
+    
+    websocket.onopen = () => {
+      console.log('Connected to WebSocket server');
+      setStatus('Connected');
+      addLog('System: Connected to Arduino');
+      // Request initial status
+      setTimeout(() => websocket.send('POS'), 500);
+    };
+    
+    websocket.onmessage = (event) => {
+      const data = event.data;
+      console.log('Received:', data);
+      addLog(`Arduino: ${data}`);
+      
+      // Parse position updates
+      if (data.includes('POS:')) {
+        parsePositionUpdate(data);
+      }
+      
+      // Detect calibration status
+      if (data.includes('CAL:YES')) {
+        setIsCalibrated(true);
+      } else if (data.includes('CAL:NO')) {
+        setIsCalibrated(false);
+      }
+      
+      // Detect movement status
+      if (data.includes('MOVING TO') || data.includes('Direction:')) {
+        setIsMoving(true);
+      } else if (data.includes('TARGET REACHED') || data.includes('STOP')) {
+        setIsMoving(false);
+      }
+    };
+    
+    websocket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setStatus('Error');
+      addLog('System: Connection error');
+    };
+    
+    websocket.onclose = () => {
+      console.log('WebSocket connection closed');
+      setStatus('Disconnected');
+      addLog('System: Disconnected from Arduino');
+    };
+    
+    setWs(websocket);
+    
     return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
-      if (wsRef.current) wsRef.current.close();
+      if (websocket) {
+        websocket.close();
+      }
+      // Cleanup manual control timers
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
+      if (speedCommandIntervalRef.current) {
+        clearInterval(speedCommandIntervalRef.current);
+      }
     };
   }, []);
 
-  const loadCalibration = async () => {
-    try {
-      const response = await axios.get(`${FLASK_API}/actuator-calibration`);
-      if (response.data.success && response.data.calibration) {
-        const cal = response.data.calibration;
-        setMidpoint(parseFloat(cal.midpoint) || 500);
-        setMaxDistanceLeft(parseFloat(cal.max_distance_left) || 200);
-        setMaxDistanceRight(parseFloat(cal.max_distance_right) || 200);
-        setIsCalibrated(cal.is_calibrated || false);
-        
-        // Send calibration to Arduino
-        if (cal.is_calibrated) {
-          const calCmd = `CAL:${cal.midpoint},${cal.max_distance_left},${cal.max_distance_right}`;
-          sendCommand(calCmd);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading calibration:', error);
+  const parsePositionUpdate = (data) => {
+    // Example: "POS:50.23mm | MID_SET:0.00mm | TARGET:NONE | STATUS:LEFT_SIDE | CAL:YES | LIMITS:[-100.0 to 120.0]mm"
+    const posMatch = data.match(/POS:([-\d.]+)mm/);
+    if (posMatch) {
+      setPosition(parseFloat(posMatch[1]));
+    }
+    
+    const midMatch = data.match(/MID_SET:([-\d.]+)mm/);
+    if (midMatch) {
+      setMidpoint(parseFloat(midMatch[1]));
+    }
+    
+    const statusMatch = data.match(/STATUS:(\w+)/);
+    if (statusMatch) {
+      setLocationStatus(statusMatch[1]);
     }
   };
 
-  const connectWebSocket = () => {
-    try {
-      const ws = new WebSocket('ws://localhost:8080');
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-        setConnectionStatus('Connected');
-        setIsConnected(true);
-        setConnectionError('');
-      };
-
-      ws.onmessage = (event) => {
-        const message = event.data.trim();
-        console.log('Arduino:', message);
-        
-        // Parse position updates: POS:500.00,MID:500.00,DL:200.00,DR:200.00,CAL:1
-        if (message.startsWith('POS:')) {
-          parsePositionUpdate(message);
-        }
-        
-        // Handle limit warnings
-        if (message.includes('LIMIT:')) {
-          setTestProgress(prev => prev + '\n⚠️ ' + message);
-        }
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setConnectionStatus('Disconnected');
-        setIsConnected(false);
-        
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          setConnectionStatus('Reconnecting...');
-          connectWebSocket();
-        }, 5000);
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setConnectionStatus('Connection Error');
-        setIsConnected(false);
-        setConnectionError('Unable to connect to WebSocket server on port 8080.');
-      };
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      setConnectionStatus('Connection Failed');
-      setIsConnected(false);
-      setConnectionError('Failed to create WebSocket connection.');
-    }
-  };
-
-  const parsePositionUpdate = (message) => {
-    // Parse: POS:500.00,MID:500.00,DL:200.00,DR:200.00,CAL:1
-    const parts = message.split(',');
-    parts.forEach(part => {
-      if (part.startsWith('POS:')) {
-        setCurrentPosition(parseFloat(part.substring(4)));
-      } else if (part.startsWith('MID:')) {
-        setMidpoint(parseFloat(part.substring(4)));
-      } else if (part.startsWith('DL:')) {
-        setMaxDistanceLeft(parseFloat(part.substring(3)));
-      } else if (part.startsWith('DR:')) {
-        setMaxDistanceRight(parseFloat(part.substring(3)));
-      } else if (part.startsWith('CAL:')) {
-        setIsCalibrated(part.substring(4) === '1');
-      }
+  const addLog = (message) => {
+    setSerialLog(prev => {
+      const newLog = [...prev, { time: new Date().toLocaleTimeString(), message }];
+      return newLog.slice(-50); // Keep last 50 messages
     });
   };
 
-  const sendCommand = (command) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(command);
-      setLastCommand(command);
-      console.log(`Sent: ${command}`);
+  // Auto-scroll log
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [serialLog]);
+
+  const sendCommand = (cmd) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Sending command:', cmd);
+      ws.send(cmd);
+      addLog(`User: ${cmd}`);
     } else {
-      console.error('WebSocket is not connected');
-      setConnectionError('Not connected to server.');
+      addLog('System: Not connected to Arduino');
     }
   };
 
-  const handleMouseDown = (command, buttonName) => {
-    if (!isConnected || isRunningTest) return;
-    
-    setActiveButton(buttonName);
-    sendCommand(command);
-    
-    holdIntervalRef.current = setInterval(() => {
-      sendCommand(command);
-    }, 100);
+  const handleCalibrate = () => {
+    sendCommand('CAL');
   };
 
-  const handleMouseUp = () => {
-    if (holdIntervalRef.current) {
-      clearInterval(holdIntervalRef.current);
-      holdIntervalRef.current = null;
+  const handleSetMidpoint = () => {
+    if (window.confirm('Set current position as new midpoint?')) {
+      sendCommand('SET_MID');
     }
-    
-    if (activeButton) {
-      sendCommand('S');
-      setActiveButton(null);
+  };
+
+  const handleResetMidpoint = () => {
+    if (window.confirm('Reset midpoint to 0mm?')) {
+      sendCommand('RESET_MID');
     }
+  };
+
+  const handleMoveLeft = () => {
+    sendCommand('LEFT');
+  };
+
+  const handleMoveCenter = () => {
+    sendCommand('MID');
+  };
+
+  const handleMoveRight = () => {
+    sendCommand('RIGHT');
   };
 
   const handleStop = () => {
     sendCommand('S');
-    if (holdIntervalRef.current) {
-      clearInterval(holdIntervalRef.current);
-      holdIntervalRef.current = null;
-    }
-    setActiveButton(null);
-    setIsRunningTest(false);
-    setTestProgress('');
+    stopManualControl();
   };
 
-  // Automated Test Sequences
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  // Manual Control Functions
+  const startManualControl = (direction) => {
+    if (!isCalibrated) {
+      addLog('System: Please calibrate first');
+      return;
+    }
 
-  const runTest1_MidpointToLeftAndBack = async () => {
-    setIsRunningTest(true);
-    setTestType('Test 1: Midpoint → Left → Midpoint');
-    setTestProgress('Starting Test 1...\n');
+    setIsManualControlActive(true);
+    setManualDirection(direction);
     
-    try {
-      // Move to midpoint first
-      setTestProgress(prev => prev + '📍 Moving to midpoint...\n');
-      sendCommand('RESET');
-      await sleep(1000);
-      
-      // Move to left limit
-      setTestProgress(prev => prev + '← Moving to LEFT limit...\n');
-      sendCommand('L100');
-      await sleep(5000); // Adjust based on your actuator speed
-      sendCommand('S');
-      await sleep(500);
-      
-      // Move back to midpoint
-      setTestProgress(prev => prev + '→ Returning to midpoint...\n');
-      sendCommand('R100');
-      await sleep(2500);
-      sendCommand('S');
-      
-      setTestProgress(prev => prev + '✅ Test 1 Complete!\n');
-    } catch (error) {
-      setTestProgress(prev => prev + `❌ Error: ${error.message}\n`);
-    } finally {
-      setIsRunningTest(false);
-    }
-  };
-
-  const runTest2_MidpointToRightAndBack = async () => {
-    setIsRunningTest(true);
-    setTestType('Test 2: Midpoint → Right → Midpoint');
-    setTestProgress('Starting Test 2...\n');
+    // Send initial command with speed
+    const speedCommand = direction === 'LEFT' ? `L${manualSpeed}` : `R${manualSpeed}`;
+    sendCommand(speedCommand);
     
-    try {
-      // Move to midpoint first
-      setTestProgress(prev => prev + '📍 Moving to midpoint...\n');
-      sendCommand('RESET');
-      await sleep(1000);
-      
-      // Move to right limit
-      setTestProgress(prev => prev + '→ Moving to RIGHT limit...\n');
-      sendCommand('R100');
-      await sleep(5000);
-      sendCommand('S');
-      await sleep(500);
-      
-      // Move back to midpoint
-      setTestProgress(prev => prev + '← Returning to midpoint...\n');
-      sendCommand('L100');
-      await sleep(2500);
-      sendCommand('S');
-      
-      setTestProgress(prev => prev + '✅ Test 2 Complete!\n');
-    } catch (error) {
-      setTestProgress(prev => prev + `❌ Error: ${error.message}\n`);
-    } finally {
-      setIsRunningTest(false);
-    }
+    // Continue sending speed commands every 200ms to maintain movement
+    speedCommandIntervalRef.current = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(speedCommand);
+      }
+    }, 200);
   };
 
-  const runTest3_EndToEnd = async () => {
-    setIsRunningTest(true);
-    setTestType('Test 3: Full Range Test');
-    setTestProgress('Starting Test 3 (End-to-End)...\n');
+  const stopManualControl = () => {
+    setIsManualControlActive(false);
+    setManualDirection(null);
     
-    try {
-      // Start from midpoint
-      setTestProgress(prev => prev + '📍 Starting from midpoint...\n');
-      sendCommand('RESET');
-      await sleep(1000);
-      
-      // Midpoint → Left
-      setTestProgress(prev => prev + '← Step 1: Midpoint to LEFT...\n');
-      sendCommand('L100');
-      await sleep(5000);
+    // Clear interval
+    if (speedCommandIntervalRef.current) {
+      clearInterval(speedCommandIntervalRef.current);
+      speedCommandIntervalRef.current = null;
+    }
+    
+    // Clear hold timer if exists
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    
+    // Send stop command first
+    sendCommand('S');
+    
+    // After a short delay, return to midpoint
+    setTimeout(() => {
+      if (isCalibrated) {
+        addLog('System: Returning to midpoint...');
+        sendCommand('MID');
+      }
+    }, 500); // 500ms delay to ensure stop command is processed
+  };
+
+  const handleManualTouchStart = (direction) => {
+    // Start hold timer (300ms delay before starting movement)
+    holdTimerRef.current = setTimeout(() => {
+      startManualControl(direction);
+    }, 300);
+  };
+
+  const handleManualTouchEnd = () => {
+    // If timer hasn't fired yet, cancel it
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    
+    // Stop manual control if active
+    if (isManualControlActive) {
+      stopManualControl();
       sendCommand('S');
-      await sleep(500);
-      
-      // Left → Right
-      setTestProgress(prev => prev + '→ Step 2: LEFT to RIGHT...\n');
-      sendCommand('R100');
-      await sleep(10000);
-      sendCommand('S');
-      await sleep(500);
-      
-      // Right → Left
-      setTestProgress(prev => prev + '← Step 3: RIGHT to LEFT...\n');
-      sendCommand('L100');
-      await sleep(10000);
-      sendCommand('S');
-      await sleep(500);
-      
-      // Left → Midpoint
-      setTestProgress(prev => prev + '→ Step 4: LEFT to Midpoint...\n');
-      sendCommand('R100');
-      await sleep(5000);
-      sendCommand('S');
-      
-      setTestProgress(prev => prev + '✅ Test 3 Complete!\n');
-    } catch (error) {
-      setTestProgress(prev => prev + `❌ Error: ${error.message}\n`);
-    } finally {
-      setIsRunningTest(false);
     }
   };
 
-  // Calculate position metrics
-  const distanceFromMidpoint = currentPosition - midpoint;
-  const minPosition = midpoint - maxDistanceLeft;
-  const maxPosition = midpoint + maxDistanceRight;
-  const totalRange = maxDistanceLeft + maxDistanceRight;
-  const positionPercentage = totalRange > 0 
-    ? ((currentPosition - minPosition) / (maxPosition - minPosition) * 100)
-    : 50;
-
-  // Position indicator color
-  const getPositionColor = () => {
-    if (!isCalibrated) return 'text-gray-400';
-    if (currentPosition <= minPosition || currentPosition >= maxPosition) return 'text-red-400';
-    if (Math.abs(distanceFromMidpoint) < 10) return 'text-green-400';
-    return 'text-blue-400';
+  const handleSpeedChange = (e) => {
+    const newSpeed = parseInt(e.target.value);
+    setManualSpeed(newSpeed);
   };
 
-  useEffect(() => {
-    const handleGlobalMouseUp = () => handleMouseUp();
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    window.addEventListener('mouseleave', handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-      window.removeEventListener('mouseleave', handleGlobalMouseUp);
-    };
-  }, [activeButton]);
+  const getPositionPercentage = () => {
+    const maxLeft = -100;
+    const maxRight = 120;
+    const range = maxRight - maxLeft;
+    const normalized = ((position - maxLeft) / range) * 100;
+    return Math.max(0, Math.min(100, normalized));
+  };
+
+  const getMidpointPercentage = () => {
+    const maxLeft = -100;
+    const maxRight = 120;
+    const range = maxRight - maxLeft;
+    const normalized = ((midpoint - maxLeft) / range) * 100;
+    return Math.max(0, Math.min(100, normalized));
+  };
+
+  const getStatusColor = () => {
+    switch(locationStatus) {
+      case 'AT_MID': return 'text-green-400';
+      case 'AT_LEFT': return 'text-red-400';
+      case 'AT_RIGHT': return 'text-blue-400';
+      case 'LEFT_SIDE': return 'text-orange-400';
+      case 'RIGHT_SIDE': return 'text-cyan-400';
+      default: return 'text-gray-400';
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black py-4 px-4">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        
         {/* Header */}
-        <div className="mb-4 text-center">
-          <h1 className="text-3xl font-bold text-white mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Actuator Control & Testing
-          </h1>
-          <p className="text-gray-400 text-sm">Real-time Position Tracking</p>
-        </div>
-
-        {/* Connection & Position Status */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Connection Status */}
-          <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                <span className="text-white text-sm font-semibold">{connectionStatus}</span>
-              </div>
-              {!isConnected && (
-                <button onClick={() => connectWebSocket()} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">
-                  Reconnect
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Calibration Status */}
-          <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${isCalibrated ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-                <span className="text-white text-sm font-semibold">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-4xl font-bold mb-2">Actuator Control</h1>
+              <div className="flex items-center gap-4">
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                  status === 'Connected' ? 'bg-green-600' : 
+                  status === 'Error' ? 'bg-red-600' : 'bg-gray-600'
+                }`}>
+                  {status}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                  isCalibrated ? 'bg-blue-600' : 'bg-yellow-600'
+                }`}>
                   {isCalibrated ? 'Calibrated' : 'Not Calibrated'}
                 </span>
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor()} bg-gray-700`}>
+                  {locationStatus.replace('_', ' ')}
+                </span>
+                {isMoving && (
+                  <span className="px-3 py-1 rounded-full text-sm font-semibold bg-purple-600 animate-pulse">
+                    Moving...
+                  </span>
+                )}
               </div>
-              <button onClick={loadCalibration} className="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded">
-                Reload Cal
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={onOpenCalibration}
+                className="bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-xl font-semibold flex items-center gap-2 transition-colors"
+              >
+                <Settings className="w-5 h-5" />
+                Calibration
               </button>
             </div>
           </div>
         </div>
 
-        {/* Position Display */}
-        <div className="bg-gradient-to-br from-blue-900 to-indigo-900 bg-opacity-30 border border-blue-500 border-opacity-30 rounded-lg p-4 mb-4">
-          <h3 className="text-lg font-bold text-white mb-3">📍 Position Tracking</h3>
+        {/* Main Control Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* Current Position - Large Display */}
-          <div className="text-center mb-4">
-            <div className="text-sm text-gray-400 mb-1">Current Position</div>
-            <div className={`text-5xl font-bold ${getPositionColor()}`}>
-              {currentPosition.toFixed(1)}
-            </div>
-            <div className="text-sm text-gray-400 mt-1">
-              {distanceFromMidpoint >= 0 ? '+' : ''}{distanceFromMidpoint.toFixed(1)} from midpoint
-            </div>
-          </div>
-
-          {/* Position Bar */}
-          <div className="relative h-8 bg-gray-700 rounded-full overflow-hidden mb-4">
-            {/* Left limit marker */}
-            <div className="absolute left-0 top-0 h-full w-1 bg-red-500"></div>
-            {/* Midpoint marker */}
-            <div className="absolute left-1/2 top-0 h-full w-1 bg-green-500 transform -translate-x-1/2"></div>
-            {/* Right limit marker */}
-            <div className="absolute right-0 top-0 h-full w-1 bg-red-500"></div>
-            {/* Position indicator */}
-            <div 
-              className="absolute top-0 h-full w-3 bg-blue-400 rounded-full transform -translate-x-1/2 transition-all duration-200"
-              style={{ left: `${positionPercentage}%` }}
-            ></div>
-          </div>
-
-          {/* Position Details */}
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-gray-800 bg-opacity-50 rounded p-2 text-center">
-              <div className="text-gray-400">Left Limit</div>
-              <div className="text-red-400 font-bold">{minPosition.toFixed(1)}</div>
-            </div>
-            <div className="bg-gray-800 bg-opacity-50 rounded p-2 text-center">
-              <div className="text-gray-400">Midpoint</div>
-              <div className="text-green-400 font-bold">{midpoint.toFixed(1)}</div>
-            </div>
-            <div className="bg-gray-800 bg-opacity-50 rounded p-2 text-center">
-              <div className="text-gray-400">Right Limit</div>
-              <div className="text-blue-400 font-bold">{maxPosition.toFixed(1)}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Manual Controls */}
-        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg p-4 mb-4">
-          <h2 className="text-xl font-bold text-white mb-4 text-center">Manual Controls</h2>
-          
-          <div className="grid grid-cols-3 gap-3">
-            {/* Retract Button */}
-            <button
-              onMouseDown={() => handleMouseDown('L100', 'retract')}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              disabled={!isConnected || isRunningTest}
-              className={`bg-gradient-to-br from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-bold py-4 rounded-lg transition-all disabled:opacity-50 ${
-                activeButton === 'retract' ? 'scale-95 shadow-inner' : ''
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                <span className="text-sm">Retract</span>
-              </div>
-            </button>
-
-            {/* Stop Button */}
-            <button
-              onClick={handleStop}
-              disabled={!isConnected}
-              className="bg-gradient-to-br from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-bold py-4 rounded-lg transition-all disabled:opacity-50"
-            >
-              <div className="flex flex-col items-center gap-1">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                <span className="text-sm">STOP</span>
-              </div>
-            </button>
-
-            {/* Extend Button */}
-            <button
-              onMouseDown={() => handleMouseDown('R100', 'extend')}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              disabled={!isConnected || isRunningTest}
-              className={`bg-gradient-to-br from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-bold py-4 rounded-lg transition-all disabled:opacity-50 ${
-                activeButton === 'extend' ? 'scale-95 shadow-inner' : ''
-              }`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span className="text-sm">Extend</span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Automated Test Sequences */}
-        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-          <h2 className="text-xl font-bold text-white mb-4">🧪 Automated Tests</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <button
-              onClick={runTest1_MidpointToLeftAndBack}
-              disabled={!isConnected || !isCalibrated || isRunningTest}
-              className="bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-all disabled:opacity-50 text-sm"
-            >
-              Test 1<br/>Mid → Left → Mid
-            </button>
-
-            <button
-              onClick={runTest2_MidpointToRightAndBack}
-              disabled={!isConnected || !isCalibrated || isRunningTest}
-              className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-all disabled:opacity-50 text-sm"
-            >
-              Test 2<br/>Mid → Right → Mid
-            </button>
-
-            <button
-              onClick={runTest3_EndToEnd}
-              disabled={!isConnected || !isCalibrated || isRunningTest}
-              className="bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 disabled:from-gray-600 disabled:to-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-all disabled:opacity-50 text-sm"
-            >
-              Test 3<br/>Full Range
-            </button>
-          </div>
-
-          {/* Test Progress Display */}
-          {(isRunningTest || testProgress) && (
-            <div className="bg-black bg-opacity-50 rounded-lg p-4 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-white">{testType}</h3>
-                {isRunningTest && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs text-gray-400">Running...</span>
+          {/* Left: Position Display & Controls */}
+          <div className="space-y-6">
+            
+            {/* Position Display */}
+            <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700">
+              <h2 className="text-xl font-semibold mb-6">Current Position</h2>
+              
+              {/* Numeric Position */}
+              <div className="text-center mb-6">
+                <div className="text-6xl font-bold text-blue-400">
+                  {position.toFixed(2)}
+                </div>
+                <div className="text-gray-400 text-lg mt-2">mm</div>
+                {midpoint !== 0 && (
+                  <div className="text-sm text-yellow-400 mt-2">
+                    Custom Midpoint: {midpoint.toFixed(2)}mm
                   </div>
                 )}
               </div>
-              <pre className="text-xs text-green-400 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
-                {testProgress}
-              </pre>
+
+              {/* Visual Position Bar */}
+              <div className="mb-6">
+                <div className="relative h-8 bg-gray-700 rounded-full overflow-hidden">
+                  {/* Position indicator */}
+                  <div 
+                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-500 via-green-500 to-blue-500 transition-all duration-300"
+                    style={{ width: `${getPositionPercentage()}%` }}
+                  />
+                  {/* Midpoint marker */}
+                  <div 
+                    className="absolute top-0 h-full w-1 bg-yellow-400 z-10"
+                    style={{ left: `${getMidpointPercentage()}%` }}
+                  />
+                  {/* Current position marker */}
+                  <div 
+                    className="absolute top-1/2 transform -translate-y-1/2 w-2 h-12 bg-white shadow-lg z-20"
+                    style={{ left: `${getPositionPercentage()}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-2 text-sm text-gray-400">
+                  <span>-100mm (LEFT)</span>
+                  <span>0mm</span>
+                  <span>+120mm (RIGHT)</span>
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* Position Control Buttons */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-xl font-semibold mb-4">Position Commands</h2>
+              
+              <div className="grid grid-cols-3 gap-4">
+                <button
+                  onClick={handleMoveLeft}
+                  disabled={!isCalibrated || isMoving}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-8 rounded-xl font-semibold flex flex-col items-center justify-center gap-2 transition-colors"
+                >
+                  <ArrowLeft className="w-8 h-8" />
+                  <span>LEFT</span>
+                  <span className="text-xs opacity-75">-100mm</span>
+                </button>
+
+                <button
+                  onClick={handleMoveCenter}
+                  disabled={!isCalibrated || isMoving}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-8 rounded-xl font-semibold flex flex-col items-center justify-center gap-2 transition-colors"
+                >
+                  <Navigation className="w-8 h-8" />
+                  <span>MID</span>
+                  <span className="text-xs opacity-75">{midpoint.toFixed(0)}mm</span>
+                </button>
+
+                <button
+                  onClick={handleMoveRight}
+                  disabled={!isCalibrated || isMoving}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-8 rounded-xl font-semibold flex flex-col items-center justify-center gap-2 transition-colors"
+                >
+                  <ArrowRight className="w-8 h-8" />
+                  <span>RIGHT</span>
+                  <span className="text-xs opacity-75">+120mm</span>
+                </button>
+              </div>
+
+              {/* Emergency Stop */}
+              <button
+                onClick={handleStop}
+                className="w-full mt-4 bg-red-700 hover:bg-red-800 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Square className="w-6 h-6" />
+                EMERGENCY STOP
+              </button>
+            </div>
+
+            {/* Midpoint Control */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-xl font-semibold mb-4">Midpoint Setup</h2>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleSetMidpoint}
+                  disabled={!isCalibrated}
+                  className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Target className="w-5 h-5" />
+                  Set Midpoint
+                </button>
+                
+                <button
+                  onClick={handleResetMidpoint}
+                  disabled={!isCalibrated}
+                  className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                  Reset to 0mm
+                </button>
+              </div>
+              
+              <p className="text-sm text-gray-400 mt-3">
+                Set custom midpoint: Move to desired position, then click "Set Midpoint". MID command will return here.
+              </p>
+            </div>
+
+            {/* Calibration */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-xl font-semibold mb-4">System Calibration</h2>
+              
+              <button
+                onClick={handleCalibrate}
+                className="w-full bg-purple-600 hover:bg-purple-700 px-6 py-4 rounded-xl font-semibold transition-colors"
+              >
+                Calibrate at 0mm Reference
+              </button>
+              
+              <p className="text-sm text-gray-400 mt-3">
+                Position actuator at physical center (0mm reference), then calibrate.
+              </p>
+            </div>
+
+            {/* Manual Control (Touch & Hold) */}
+            <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+              <h2 className="text-xl font-semibold mb-4">Manual Control</h2>
+              
+              {/* Speed Slider */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm text-gray-400">Speed:</label>
+                  <span className="text-lg font-bold text-blue-400">{manualSpeed}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="20"
+                  max="100"
+                  step="5"
+                  value={manualSpeed}
+                  onChange={handleSpeedChange}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                  style={{
+                    background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${manualSpeed}%, #374151 ${manualSpeed}%, #374151 100%)`
+                  }}
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>20%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              {/* Touch & Hold Buttons */}
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onMouseDown={() => handleManualTouchStart('LEFT')}
+                  onMouseUp={handleManualTouchEnd}
+                  onMouseLeave={handleManualTouchEnd}
+                  onTouchStart={() => handleManualTouchStart('LEFT')}
+                  onTouchEnd={handleManualTouchEnd}
+                  disabled={!isCalibrated}
+                  className={`px-6 py-12 rounded-xl font-bold text-lg flex flex-col items-center justify-center gap-3 transition-all select-none ${
+                    isManualControlActive && manualDirection === 'LEFT'
+                      ? 'bg-red-700 scale-95 shadow-inner'
+                      : 'bg-red-600 hover:bg-red-700 active:scale-95'
+                  } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+                >
+                  <ArrowLeft className="w-10 h-10" />
+                  <span>HOLD LEFT</span>
+                  {isManualControlActive && manualDirection === 'LEFT' && (
+                    <span className="text-xs animate-pulse">● ACTIVE</span>
+                  )}
+                </button>
+
+                <button
+                  onMouseDown={() => handleManualTouchStart('RIGHT')}
+                  onMouseUp={handleManualTouchEnd}
+                  onMouseLeave={handleManualTouchEnd}
+                  onTouchStart={() => handleManualTouchStart('RIGHT')}
+                  onTouchEnd={handleManualTouchEnd}
+                  disabled={!isCalibrated}
+                  className={`px-6 py-12 rounded-xl font-bold text-lg flex flex-col items-center justify-center gap-3 transition-all select-none ${
+                    isManualControlActive && manualDirection === 'RIGHT'
+                      ? 'bg-blue-700 scale-95 shadow-inner'
+                      : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                  } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+                >
+                  <ArrowRight className="w-10 h-10" />
+                  <span>HOLD RIGHT</span>
+                  {isManualControlActive && manualDirection === 'RIGHT' && (
+                    <span className="text-xs animate-pulse">● ACTIVE</span>
+                  )}
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-400 mt-4">
+                <strong>Touch & Hold</strong> to manually move actuator. <strong>Release to stop and auto-return to midpoint.</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Serial Monitor */}
+          <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+            <h2 className="text-xl font-semibold mb-4">Serial Monitor</h2>
+            
+            <div 
+              ref={logRef}
+              className="bg-black rounded-xl p-4 h-[800px] overflow-y-auto font-mono text-sm"
+            >
+              {serialLog.map((log, index) => (
+                <div key={index} className="mb-2">
+                  <span className="text-gray-500">[{log.time}]</span>{' '}
+                  <span className={
+                    log.message.startsWith('System:') ? 'text-yellow-400' :
+                    log.message.startsWith('User:') ? 'text-green-400' :
+                    'text-white'
+                  }>
+                    {log.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

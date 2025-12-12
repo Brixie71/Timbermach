@@ -12,7 +12,7 @@
   display: none;
 }
 
-/* Slider animations - NO LOOP */
+/* Standard slide animations */
 @keyframes slideInFromLeft {
   from {
     transform: translateX(-100%);
@@ -36,10 +36,6 @@
 }
 
 @keyframes slideOutToLeft {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
   to {
     transform: translateX(-100%);
     opacity: 0;
@@ -47,18 +43,30 @@
 }
 
 @keyframes slideOutToRight {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
   to {
     transform: translateX(100%);
     opacity: 0;
   }
 }
 
-.slide-animation {
-  animation-duration: 0.3s;
-  animation-timing-function: ease-in-out;
-  animation-fill-mode: both;
+/* Card slide animation classes */
+.slide-out-left {
+  animation: slideOutToLeft 0.2s ease-out forwards;
+}
+
+.slide-in-from-right {
+  animation: slideInFromRight 0.2s ease-out forwards;
+}
+
+.slide-out-right {
+  animation: slideOutToRight 0.2s ease-out forwards;
+}
+
+.slide-in-from-left {
+  animation: slideInFromLeft 0.2s ease-out forwards;
+}
+
+/* Dragging state - no animation, instant transform */
+.dragging {
+  transition: none !important;
 }
