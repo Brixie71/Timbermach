@@ -31,14 +31,14 @@ class SevenSegmentOCR:
     def __init__(self):
         self.calibration = None
         self.detection_method = "smart_adaptive"
-        self.has_decimal_point = False
+        self.has_decimal_point = True
         self.decimal_position = 1
 
     def set_calibration(
         self,
         display_box: Dict,
         segment_boxes: List[List[Dict]],
-        has_decimal_point: bool = False,
+        has_decimal_point: bool = True,
         decimal_position: int = 1,
     ):
         """Store calibration data for the display"""
