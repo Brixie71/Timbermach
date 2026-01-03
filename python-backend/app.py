@@ -19,6 +19,8 @@ from edge_detection_utils import (
     convert_to_grayscale
 )
 
+from auto_detection_utils import WoodAutoDetector, visualize_detection
+
 # Import seven-segment OCR utilities
 from seven_segment_ocr import SevenSegmentOCR, create_default_segment_boxes
 
@@ -853,6 +855,133 @@ def visualize_seven_segment():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e), "success": False}), 500
+    
+# ============================================================================
+# AUTO-DETECTION ENDPOINT (GrabCut + Color Segmentation + Contour Detection)
+# ============================================================================
+
+@app.route('/auto-measure/detect-and-align', methods=['POST'])
+def auto_detect_wood():
+    """
+    Automatically detect wood specimen and align measurement lines
+    Uses GrabCut → Color Segmentation → Contour Detection pipeline
+    ---
+    tags:
+      - Auto Detection
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: image
+        in: formData
+        type: file
+        required: true
+      - name: calibrationFactor
+        in: formData
+        type: number
+        required: true
+        description: Calibration factor in mm/pixel
+      - name: cameraDistance
+        in: formData
+        type: number
+        required: true
+        description: Camera distance in mm
+      - name: autoInit
+        in: formData
+        type: boolean
+        default: true
+        description: Auto-initialize GrabCut rectangle
+      - name: grabcutIterations
+        in: formData
+        type: integer
+        default: 5
+        description: Number of GrabCut iterations
+      - name: returnDebugImages
+        in: formData
+        type: boolean
+        default: false
+        description: Return visualization images for debugging
+    responses:
+      200:
+        description: Detection successful with auto-aligned measurement lines
+      400:
+        description: Bad request or detection failed
+    """
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file", "success": False}), 400
+        
+        # Read image
+        image_file = request.files['image']
+        image_bytes = image_file.read()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            return jsonify({"error": "Failed to decode image", "success": False}), 400
+        
+        # Get parameters
+        calibration_factor = float(request.form.get('calibrationFactor', 0.1432))
+        camera_distance = float(request.form.get('cameraDistance', 210))
+        auto_init = request.form.get('autoInit', 'true').lower() == 'true'
+        grabcut_iterations = int(request.form.get('grabcutIterations', 5))
+        return_debug = request.form.get('returnDebugImages', 'false').lower() == 'true'
+        
+        # Initialize detector
+        detector = WoodAutoDetector()
+        
+        # Run detection
+        detection_result = detector.detect(
+            img,
+            auto_init=auto_init,
+            grabcut_iterations=grabcut_iterations
+        )
+        
+        if not detection_result['success']:
+            return jsonify(detection_result), 400
+        
+        # Calculate measurements using the detected line positions
+        measurements = calculate_measurements_from_lines(
+            detection_result['widthLine1'],
+            detection_result['widthLine2'],
+            detection_result['heightLine1'],
+            detection_result['heightLine2'],
+            calibration_factor
+        )
+        
+        # Combine detection result with measurements
+        response = {
+            'success': detection_result['success'],
+            'autoAligned': detection_result['autoAligned'],
+            'confidence': detection_result['confidence'],
+            'widthLine1': detection_result['widthLine1'],
+            'widthLine2': detection_result['widthLine2'],
+            'heightLine1': detection_result['heightLine1'],
+            'heightLine2': detection_result['heightLine2'],
+            'centerX': detection_result['centerX'],
+            'centerY': detection_result['centerY'],
+            'widthPixels': detection_result['widthPixels'],
+            'heightPixels': detection_result['heightPixels'],
+            'angle': detection_result['angle'],
+            'aspectRatio': detection_result['aspectRatio'],
+            'isSquare': detection_result['isSquare'],
+            'measurements': measurements,
+            'cameraDistance': camera_distance,
+            'imageWidth': img.shape[1],
+            'imageHeight': img.shape[0]
+        }
+        
+        # Add debug visualizations if requested
+        if return_debug and 'detectionData' in detection_result:
+            viz = visualize_detection(img, detection_result['detectionData'])
+            response['debugImages'] = viz
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"ERROR in auto-detect: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
 
 # --- GET CALIBRATION ---
 @app.route('/seven-segment/calibration', methods=['GET'])
@@ -1213,6 +1342,7 @@ if __name__ == '__main__':
     print(f"Swagger: http://localhost:5000/apidocs")
     print("=" * 60)
     print("\nðŸ“‹ Endpoints:")
+    print("  POST /auto-measure/detect-and-align (Auto Detection)")
     print("  POST /measure (Edge Detection)")
     print("  POST /manual-measure/calculate (Manual Lines)")
     print("  POST /manual-measure/visualize (Manual Visualization)")

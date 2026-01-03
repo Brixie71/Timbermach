@@ -9,26 +9,24 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   // For Flexure: Use "Integrated Webcam" (front camera)
   const CAMERA_DEVICE_ID = testType === 'flexure' ? 
     'UVC Camera (12d1:4321)' :  // Change this to your front camera name
-    'A4ech FHD 1080P PC Camera (09da:2704)';     // Change this to your back camera name
-
-    // Development camera 'USB2.0 HD UVC WebCam (322e:202c)';     // Change this to your back camera name
+    'USB2.0 HD UVC WebCam (322e:202c)';     // Change this to your back camera name
   
   // HARDCODED CALIBRATION VALUES FOR EACH TEST TYPE
   const CALIBRATION_PRESETS = {
     flexure: {
-      manualFactor: 0.1403,      // Updated calibration
-      targetDistance: 210.30,
-      cameraDistance: 210.30
+      manualFactor: 0.1432,      // Already calibrated for flexure
+      targetDistance: 210,        // 210mm (21cm)
+      cameraDistance: 210
     },
     compressive: {
-      manualFactor: 0.1218,      // TODO: Calibrate this value for compressive
-      targetDistance: 196.85,        // Adjust based on your setup
-      cameraDistance: 196.85
+      manualFactor: 0.1600,      // TODO: Calibrate this value for compressive
+      targetDistance: 250,        // Adjust based on your setup
+      cameraDistance: 250
     },
     shear: {
-      manualFactor: 0.1218,      // TODO: Calibrate this value for shear
-      targetDistance: 196.85,        // Adjust based on your setup
-      cameraDistance: 196.85
+      manualFactor: 0.1600,      // TODO: Calibrate this value for shear
+      targetDistance: 250,        // Adjust based on your setup
+      cameraDistance: 250
     }
   };
   
@@ -55,6 +53,8 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [autoDetectResult, setAutoDetectResult] = useState(null);
   
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -387,6 +387,168 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
     setDraggingLine(null);
   };
   
+  const performAutoDetection = async () => {
+    if (!videoRef.current || !captureCanvasRef.current) {
+      setError('Camera not ready');
+      return;
+    }
+    
+    // Validate calibration factor exists
+    if (!calibrationFactor || calibrationFactor === 0) {
+      setError('Calibration factor not set. Please configure calibration first.');
+      return;
+    }
+    
+    setIsAutoDetecting(true);
+    setError(null);
+    setAutoDetectResult(null);
+    
+    try {
+      // Capture current frame from video
+      const video = videoRef.current;
+      const canvas = captureCanvasRef.current;
+      const context = canvas.getContext('2d');
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert to blob for API
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.95);
+      });
+      
+      if (!blob) {
+        throw new Error('Failed to capture image from camera');
+      }
+      
+      const imageFile = new File([blob], 'auto-detect.jpg', { type: 'image/jpeg' });
+      
+      console.log('Auto-detect parameters:', {
+        calibrationFactor,
+        cameraDistance,
+        imageSize: `${canvas.width}x${canvas.height}`
+      });
+      
+      // Call auto-detection endpoint
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      formData.append('calibrationFactor', String(calibrationFactor));
+      formData.append('cameraDistance', String(cameraDistance));
+      formData.append('autoInit', 'true');
+      formData.append('grabcutIterations', '5');
+      formData.append('returnDebugImages', 'false');
+      
+      const response = await fetch(`${API_URL}/auto-measure/detect-and-align`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      
+      console.log('Auto-detect response:', data);
+      
+      if (!response.ok || !data.success) {
+        const errorMsg = data.error || `Server error: ${response.status}`;
+        setError(`Auto-detection failed: ${errorMsg}. Try manual adjustment.`);
+        setIsAutoDetecting(false);
+        return;
+      }
+      
+      // Validate detection results
+      if (!data.widthLine1 || !data.widthLine2 || !data.heightLine1 || !data.heightLine2) {
+        setError('Invalid detection results. Please use manual lines.');
+        setIsAutoDetecting(false);
+        return;
+      }
+      
+      // Update line positions with detected values
+      // CRITICAL: Python returns positions for the captured image size,
+      // but we need positions for the current video stream size
+      const capturedImageWidth = data.imageWidth || videoResolution.width;
+      const capturedImageHeight = data.imageHeight || videoResolution.height;
+
+      console.log('Image dimensions:', {
+        captured: { width: capturedImageWidth, height: capturedImageHeight },
+        video: videoResolution
+      });
+
+      // If resolutions match, use directly. Otherwise, scale the positions
+      let scaledWidthLine1, scaledWidthLine2, scaledHeightLine1, scaledHeightLine2;
+
+      if (capturedImageWidth === videoResolution.width && capturedImageHeight === videoResolution.height) {
+        // Perfect match - use directly
+        scaledWidthLine1 = data.widthLine1;
+        scaledWidthLine2 = data.widthLine2;
+        scaledHeightLine1 = data.heightLine1;
+        scaledHeightLine2 = data.heightLine2;
+      } else {
+        // Scale positions to match video resolution
+        const scaleX = videoResolution.width / capturedImageWidth;
+        const scaleY = videoResolution.height / capturedImageHeight;
+        
+        scaledWidthLine1 = Math.round(data.widthLine1 * scaleX);
+        scaledWidthLine2 = Math.round(data.widthLine2 * scaleX);
+        scaledHeightLine1 = Math.round(data.heightLine1 * scaleY);
+        scaledHeightLine2 = Math.round(data.heightLine2 * scaleY);
+        
+        console.log('Scaled positions:', {
+          original: [data.widthLine1, data.widthLine2, data.heightLine1, data.heightLine2],
+          scaled: [scaledWidthLine1, scaledWidthLine2, scaledHeightLine1, scaledHeightLine2],
+          scale: { x: scaleX, y: scaleY }
+        });
+      }
+
+      // Clamp to video bounds
+      const newWidthLine1 = Math.max(0, Math.min(scaledWidthLine1, videoResolution.width));
+      const newWidthLine2 = Math.max(0, Math.min(scaledWidthLine2, videoResolution.width));
+      const newHeightLine1 = Math.max(0, Math.min(scaledHeightLine1, videoResolution.height));
+      const newHeightLine2 = Math.max(0, Math.min(scaledHeightLine2, videoResolution.height));
+
+      console.log('Final clamped positions:', {
+        width: [newWidthLine1, newWidthLine2],
+        height: [newHeightLine1, newHeightLine2]
+      });
+
+      setWidthLine1(newWidthLine1);
+      setWidthLine2(newWidthLine2);
+      setHeightLine1(newHeightLine1);
+      setHeightLine2(newHeightLine2);
+
+      // Force immediate visual update
+      setTimeout(() => {
+        console.log('Lines updated, current positions:', {
+          widthLine1: newWidthLine1,
+          widthLine2: newWidthLine2,
+          heightLine1: newHeightLine1,
+          heightLine2: newHeightLine2
+        });
+      }, 100);
+                  
+      // Store auto-detect result for display
+      setAutoDetectResult({
+        confidence: data.confidence,
+        aspectRatio: data.aspectRatio,
+        isSquare: data.isSquare
+      });
+      
+      setIsAutoDetecting(false);
+      
+      console.log('Auto-detection completed successfully:', {
+        confidence: data.confidence,
+        lines: {
+          width: [data.widthLine1, data.widthLine2],
+          height: [data.heightLine1, data.heightLine2]
+        }
+      });
+      
+    } catch (err) {
+      console.error('Auto-detection error:', err);
+      setError('Auto-detection error: ' + err.message + '. Use manual lines instead.');
+      setIsAutoDetecting(false);
+    }
+  };
+  
   const performMeasurement = async () => {
     if (!videoRef.current || !captureCanvasRef.current) {
       setError('Camera not ready');
@@ -568,6 +730,23 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
           
           {currentStep === 1 && (
             <>
+              {/* Calibration Status Warning for Compressive/Shear */}
+              {testType !== 'flexure' && (
+                <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-lg p-4 mb-4">
+                  <div className="flex items-center text-yellow-200">
+                    <Info className="w-5 h-5 mr-3" />
+                    <div>
+                      <strong className="text-lg">⚠️ Calibration Required for {testType.charAt(0).toUpperCase() + testType.slice(1)} Test</strong>
+                      <div className="mt-2 text-sm">
+                        Current calibration factor: <strong>{manualCalibrationFactor}</strong> mm/px (placeholder value)<br/>
+                        Camera distance: <strong>{cameraDistance}mm</strong> (placeholder value)<br/>
+                        <span className="text-yellow-400">Please calibrate this camera by placing a 3×3" specimen and adjusting the manual factor below.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-gray-800 rounded-lg p-4 mb-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                   <div>
@@ -670,9 +849,142 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                   )}
                 </div>
                 
-                <button type="button" onClick={performMeasurement} disabled={!isCameraActive || isProcessing} className={`w-full px-6 py-3 rounded-lg font-semibold transition-colors ${!isCameraActive || isProcessing ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                  {isProcessing ? 'Processing...' : 'Perform Measurement'}
-                </button>
+                {/* Distance indicator helper */}
+                <div className={`rounded-lg p-3 mb-4 text-sm ${
+                  Math.abs(cameraDistance - targetDistance) > 10
+                    ? 'bg-red-900 bg-opacity-30 border border-red-700 text-red-200'
+                    : 'bg-green-900 bg-opacity-30 border border-green-700 text-green-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <strong>Distance Check:</strong> {Math.abs(cameraDistance - targetDistance) > 10 ? '⚠️ Adjust camera position!' : '✓ Camera positioned correctly'}
+                    </div>
+                    <div className="text-xs">
+                      {cameraDistance < targetDistance && `Move camera ${(targetDistance - cameraDistance).toFixed(0)}mm AWAY`}
+                      {cameraDistance > targetDistance && `Move camera ${(cameraDistance - targetDistance).toFixed(0)}mm CLOSER`}
+                      {Math.abs(cameraDistance - targetDistance) <= 10 && '✓ Perfect position'}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Calibration Helper */}
+                <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded-lg p-3 mb-4">
+                  <div className="text-sm text-yellow-200">
+                    <strong className="flex items-center">
+                      <Info className="w-4 h-4 mr-2" />
+                      Calibration Guide for {testType.charAt(0).toUpperCase() + testType.slice(1)} Test
+                    </strong>
+                    <div className="mt-2 text-xs grid grid-cols-2 gap-2">
+                      <div>
+                        <strong>For 76.2mm (3") specimen at {targetDistance}mm distance:</strong>
+                        <div className="mt-1">
+                          • If measured = XX.Xmm, actual = 76.2mm<br/>
+                          • Correction factor = 76.2 / measured_width<br/>
+                          • New calibration = {calibrationFactor ? (calibrationFactor * (76.2 / widthMM || 1)).toFixed(6) : 'N/A'} mm/px
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Quick Fix:</strong>
+                        <div className="mt-1">
+                          1. Place 3×3" specimen at {targetDistance}mm<br/>
+                          2. Adjust lines to edges<br/>
+                          3. Switch to Manual mode<br/>
+                          4. Calculate: (76.2 / measured_width) × current_factor<br/>
+                          5. Update the CALIBRATION_PRESETS in code
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-3 mb-4">
+                  <div className="text-sm text-blue-200">
+                    <strong className="flex items-center"><Info className="w-4 h-4 mr-2" />Manual Line Measurement with Camera</strong>
+                    <div className="mt-2 text-xs">
+                      1. Camera auto-selected: {CAMERA_DEVICE_ID}<br />
+                      2. Use <strong className="text-blue-400">Auto-Detect</strong> button to automatically align lines to wood edges<br />
+                      3. OR manually drag RED lines to match wood width edges<br />
+                      4. OR manually drag GREEN lines to match wood height edges<br />
+                      5. View real-time measurements
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Auto-Detect Result Display */}
+                {autoDetectResult && (
+                  <div className={`rounded-lg p-3 mb-4 border ${
+                    autoDetectResult.confidence > 0.8 
+                      ? 'bg-green-900 bg-opacity-30 border-green-700' 
+                      : autoDetectResult.confidence > 0.6
+                      ? 'bg-yellow-900 bg-opacity-30 border-yellow-700'
+                      : 'bg-orange-900 bg-opacity-30 border-orange-700'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className={`text-sm ${
+                        autoDetectResult.confidence > 0.8 ? 'text-green-200' : 
+                        autoDetectResult.confidence > 0.6 ? 'text-yellow-200' : 'text-orange-200'
+                      }`}>
+                        <strong>Auto-Detection Results:</strong> 
+                        <span className="ml-2">
+                          Confidence: {(autoDetectResult.confidence * 100).toFixed(1)}%
+                        </span>
+                        {autoDetectResult.isSquare && (
+                          <span className="ml-2 text-green-400">✓ Square specimen detected</span>
+                        )}
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setAutoDetectResult(null)}
+                        className="text-gray-400 hover:text-white text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {autoDetectResult.confidence < 0.8 && (
+                      <div className="text-xs mt-2 text-yellow-300">
+                        Low confidence. Please verify line positions manually.
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button 
+                    type="button" 
+                    onClick={performAutoDetection} 
+                    disabled={!isCameraActive || isAutoDetecting || isProcessing} 
+                    className={`px-6 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                      !isCameraActive || isAutoDetecting || isProcessing 
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {isAutoDetecting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Auto-Detecting...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4" />
+                        Auto-Detect Wood
+                      </>
+                    )}
+                  </button>
+                  
+                  <button 
+                    type="button" 
+                    onClick={performMeasurement} 
+                    disabled={!isCameraActive || isProcessing || isAutoDetecting} 
+                    className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
+                      !isCameraActive || isProcessing || isAutoDetecting 
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {isProcessing ? 'Processing...' : 'Perform Measurement'}
+                  </button>
+                </div>
               </div>
               
               {error && (
@@ -701,12 +1013,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                 {/* Camera View with Live Measurement Lines */}
                 {isCameraActive && (
                   <div 
-                    className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center"
-                    style={{
-                      aspectRatio: `${videoResolution.width} / ${videoResolution.height}`,
-                      maxHeight: '600px',
-                      width: '100%'
-                    }}
+                    className="relative bg-black rounded-lg overflow-hidden"
                     onMouseDown={handleMouseDownOnVideo}
                     onMouseMove={handleMouseMoveOnVideo}
                     onMouseUp={handleMouseUp}
@@ -717,28 +1024,14 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                       autoPlay
                       playsInline
                       muted
-                      className="rounded-lg"
-                      style={{ 
-                        maxHeight: '600px',
-                        width: 'auto',
-                        maxWidth: '100%',
-                        objectFit: 'contain',  // Preserve aspect ratio
-                        aspectRatio: `${videoResolution.width} / ${videoResolution.height}`,
-                        margin: '0 auto',
-                        display: 'block'
-                      }}
+                      className="w-full h-auto rounded-lg"
+                      style={{ maxHeight: '600px' }}
                     />
                     
                     {/* SVG Overlay for measurement lines */}
                     <svg 
-                      className="absolute inset-0 pointer-events-none"
-                      style={{ 
-                        width: '100%', 
-                        height: '100%',
-                        objectFit: 'contain'
-                      }}
-                      viewBox={`0 0 ${videoResolution.width} ${videoResolution.height}`}
-                      preserveAspectRatio="xMidYMid meet"
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      style={{ width: '100%', height: '100%' }}
                     >
                       {/* Red vertical lines (width) */}
                       <line 

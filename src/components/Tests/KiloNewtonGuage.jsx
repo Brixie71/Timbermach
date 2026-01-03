@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as d3 from "d3";
+import { ArrowLeft, ArrowRight, Navigation, Square, AlertTriangle, Activity } from 'lucide-react';
+// ✅ Added Activity to the imports ^
 
 // Define the configuration for different test types
 const gaugeConfigs = {
@@ -20,42 +22,372 @@ const gaugeConfigs = {
 // Default configuration for the gauge
 const defaultConfig = gaugeConfigs.compressive;
 
+// Actuator positions
+const ACTUATOR_POSITIONS = {
+  LEFT: 'LEFT',
+  MID: 'MID',
+  RIGHT: 'RIGHT'
+};
+
 const KiloNewtonGauge = ({ 
   testType,
   onPreviousTest = () => {},
   onMainPageReturn = () => {},
   onTestComplete = () => {} 
 }) => {
-  const [kNValue, setKNValue] = useState(0); // Current kN value
-  const [pressureData, setPressureData] = useState([]); // Store pressure data points over time
-  const [maxPressure, setMaxPressure] = useState({ value: 0, time: 0 }); // Track maximum pressure
-  const [testStartTime, setTestStartTime] = useState(null); // When the test started
-  const [showWarning, setShowWarning] = useState(false); // State to manage warning popup visibility
-  const [isTestRunning, setIsTestRunning] = useState(false); // Track if test is running
-  const [testCompleted, setTestCompleted] = useState(false); // Track if test completed
-  const [svgCreated, setSvgCreated] = useState(false); // Track if SVG has been created
+  // Pressure measurement state
+  const [kNValue, setKNValue] = useState(0);
+  const [pressureData, setPressureData] = useState([]);
+  const [maxPressure, setMaxPressure] = useState({ value: 0, time: 0 });
+  const [testStartTime, setTestStartTime] = useState(null);
+  const [showWarning, setShowWarning] = useState(false);
+  const [isTestRunning, setIsTestRunning] = useState(false);
+  const [testCompleted, setTestCompleted] = useState(false);
+  const [svgCreated, setSvgCreated] = useState(false);
+  const [manualDirection, setManualDirection] = useState(null);
+  const holdIntervalRef = useRef(null);
 
+  // Actuator control state
+  const [wsConnected, setWsConnected] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState(ACTUATOR_POSITIONS.MID);
+  const [isMoving, setIsMoving] = useState(false);
+  const [isCalibrated, setIsCalibrated] = useState(false);
+  const [showCalibrationPrompt, setShowCalibrationPrompt] = useState(true);
+  const [targetPosition, setTargetPosition] = useState(null);
+
+  // WebSocket refs
+  const wsRef = useRef(null);
+  const pressureWSRef = useRef(null);
+  
+  // Graph and simulation refs
   const config = gaugeConfigs[testType?.toLowerCase()] || defaultConfig;
   const graphRef = useRef(null);
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const resizeObserverRef = useRef(null);
-  const simulationIntervalRef = useRef(null);
-  const currentPhaseRef = useRef('loading'); // loading, increasing, peaking, dropping
-  const targetPeakRef = useRef(0);
-  const peakReachedTimeRef = useRef(0);
+  const pressureIntervalRef = useRef(null);
 
-  // Log props for debugging
+  // ============================================================================
+  // WEBSOCKET CONNECTIONS
+  // ============================================================================
+
   useEffect(() => {
-    console.log("KiloNewtonGauge props:", { 
-      testType, 
-      onPreviousTest: !!onPreviousTest, 
-      onMainPageReturn: !!onMainPageReturn,
-      onTestComplete: !!onTestComplete 
-    });
-  }, [testType, onPreviousTest, onMainPageReturn, onTestComplete]);
+    connectActuatorWebSocket();
+    connectPressureWebSocket();
+  
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (pressureWSRef.current) {
+        pressureWSRef.current.close();
+      }
+      if (pressureIntervalRef.current) {
+        clearInterval(pressureIntervalRef.current);
+      }
+      // ✅ Add this cleanup
+      if (holdIntervalRef.current) {
+        clearInterval(holdIntervalRef.current);
+      }
+    };
+  }, []);
 
-  // Start the test and simulation
+  /**
+   * Connect to Actuator Control WebSocket
+   */
+  const connectActuatorWebSocket = () => {
+    try {
+      const ws = new WebSocket('ws://localhost:8080');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Actuator WebSocket connected');
+        setWsConnected(true);
+        
+        // Request calibration status
+        setTimeout(() => ws.send('POS'), 500);
+      };
+
+      ws.onmessage = (event) => {
+        const data = event.data;
+        console.log('Actuator:', data);
+
+        // Parse position updates
+        if (data.includes('POS:')) {
+          const posMatch = data.match(/POS:([-\d.]+)mm/);
+          if (posMatch) {
+            const positionMM = parseFloat(posMatch[1]);
+            updateCurrentPositionFromMM(positionMM);
+          }
+        }
+
+        // Check calibration status
+        if (data.includes('CAL:YES')) {
+          setIsCalibrated(true);
+          setShowCalibrationPrompt(false);
+        } else if (data.includes('CAL:NO')) {
+          setIsCalibrated(false);
+        }
+
+        // Detect calibration completion
+        if (data.includes('>>> CALIBRATION <<<') || data.includes('Current position set to 0mm')) {
+          setIsCalibrated(true);
+          setShowCalibrationPrompt(false);
+        }
+
+        // Detect movement status
+        if (data.includes('MOVING') || data.includes('Direction:')) {
+          setIsMoving(true);
+        } else if (data.includes('STOP') || data.includes('TARGET REACHED')) {
+          setIsMoving(false);
+          setTargetPosition(null);
+        }
+
+        // Detect position reached
+        if (data.includes('>>> TARGET REACHED <<<')) {
+          setIsMoving(false);
+          setTargetPosition(null);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('Actuator WebSocket error:', error);
+        setWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        console.log('Actuator WebSocket closed');
+        setWsConnected(false);
+      };
+    } catch (error) {
+      console.error('Failed to create Actuator WebSocket:', error);
+      setWsConnected(false);
+    }
+  };
+
+  /**
+   * Connect to Pressure Sensor WebSocket
+   */
+  const connectPressureWebSocket = () => {
+    try {
+      // Changed from ws://localhost:5000 to ws://localhost:5001
+      const ws = new WebSocket('ws://localhost:5001');
+      pressureWSRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Pressure sensor WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.pressure !== undefined) {
+            const pressureKN = data.pressure;
+            setKNValue(pressureKN);
+
+            if (isTestRunning && testStartTime) {
+              const currentTime = (Date.now() - testStartTime) / 1000;
+              
+              setPressureData(prevData => {
+                const newData = [...prevData, { time: currentTime, pressure: pressureKN }];
+                return newData;
+              });
+
+              if (pressureKN > maxPressure.value) {
+                setMaxPressure({ value: pressureKN, time: currentTime });
+              }
+
+              setShowWarning(pressureKN > config.warning);
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing pressure data:', e);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('Pressure WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('Pressure WebSocket closed');
+      };
+    } catch (error) {
+      console.error('Failed to create Pressure WebSocket:', error);
+    }
+  };
+
+  /**
+   * Update current position based on mm value from Arduino
+   */
+  const updateCurrentPositionFromMM = (positionMM) => {
+    // Tolerance for position detection
+    const tolerance = 2.0;
+
+    if (Math.abs(positionMM - 0) <= tolerance) {
+      setCurrentPosition(ACTUATOR_POSITIONS.MID);
+    } else if (Math.abs(positionMM - (-27)) <= tolerance) {
+      setCurrentPosition(ACTUATOR_POSITIONS.LEFT);
+    } else if (Math.abs(positionMM - 27) <= tolerance) {
+      setCurrentPosition(ACTUATOR_POSITIONS.RIGHT);
+    }
+  };
+
+  // ============================================================================
+  // ACTUATOR CONTROL FUNCTIONS
+  // ============================================================================
+
+  /**
+   * Send command to Arduino
+   */
+  const sendCommand = (cmd) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('Sending command:', cmd);
+      wsRef.current.send(cmd);
+    } else {
+      console.error('WebSocket not connected');
+    }
+  };
+
+  /**
+   * Handle calibration
+   */
+  const handleCalibrate = () => {
+    if (!wsConnected) {
+      alert('WebSocket not connected to Arduino');
+      return;
+    }
+
+    sendCommand('CAL');
+    setShowCalibrationPrompt(false);
+  };
+
+  /**
+   * Move to specific position with safety checks
+   */
+  const moveToPosition = (position) => {
+    if (!wsConnected) {
+      alert('WebSocket not connected to Arduino');
+      return;
+    }
+
+    if (!isCalibrated) {
+      alert('Please calibrate the actuator first!');
+      setShowCalibrationPrompt(true);
+      return;
+    }
+
+    // Safety check: Prevent direct LEFT <-> RIGHT movement
+    if (currentPosition === ACTUATOR_POSITIONS.LEFT && position === ACTUATOR_POSITIONS.RIGHT) {
+      alert('⚠️ SAFETY: Cannot move directly from LEFT to RIGHT. Move to MID first!');
+      return;
+    }
+
+    if (currentPosition === ACTUATOR_POSITIONS.RIGHT && position === ACTUATOR_POSITIONS.LEFT) {
+      alert('⚠️ SAFETY: Cannot move directly from RIGHT to LEFT. Move to MID first!');
+      return;
+    }
+
+    // ✅ REMOVED: Check if already at target position
+    // Allow MID to be pressed even if already at MID (for confirmation/recalibration)
+    // if (currentPosition === position) {
+    //   console.log('Already at', position);
+    //   return;
+    // }
+
+    // Send position command
+    setTargetPosition(position);
+    setIsMoving(true);
+    sendCommand(position);
+    
+    console.log(`Moving to ${position} (from ${currentPosition})`);
+  };
+
+  /**
+   * Emergency stop
+   */
+  const handleEmergencyStop = () => {
+    sendCommand('S');
+    setIsMoving(false);
+    setTargetPosition(null);
+  };
+
+  /**
+   * Manual hold control - press and hold to move
+   */
+  const handleManualMouseDown = (direction) => {
+    if (!wsConnected) {
+      alert('WebSocket not connected to Arduino');
+      return;
+    }
+
+    if (!isCalibrated) {
+      alert('Please calibrate the actuator first!');
+      setShowCalibrationPrompt(true);
+      return;
+    }
+
+    setManualDirection(direction);
+    
+    // Send speed command (e.g., L80 or R80 for 80% speed)
+    const speed = 80;
+    const command = direction === 'LEFT' ? `L${speed}` : `R${speed}`;
+    sendCommand(command);
+    
+    console.log(`Manual hold started: ${direction} at ${speed}% speed`);
+
+    // Keep sending command while holding (every 200ms)
+    holdIntervalRef.current = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(command);
+      }
+    }, 200);
+  };
+
+  /**
+   * Stop manual hold movement
+   */
+  const handleManualMouseUp = () => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+
+    if (manualDirection) {
+      sendCommand('S'); // Stop command
+      console.log('Manual hold stopped');
+      setManualDirection(null);
+    }
+  };
+
+  /**
+   * Handle recenter command (go to MID)
+   */
+  const handleRecenter = () => {
+    if (!wsConnected) {
+      alert('WebSocket not connected to Arduino');
+      return;
+    }
+
+    if (!isCalibrated) {
+      alert('Please calibrate the actuator first!');
+      setShowCalibrationPrompt(true);
+      return;
+    }
+
+    sendCommand('MID');
+    console.log('Recentering to MID position');
+  };
+
+
+  // ============================================================================
+  // TEST CONTROL FUNCTIONS
+  // ============================================================================
+
+  /**
+   * Start the test
+   */
   const startTest = () => {
     setTestStartTime(Date.now());
     setPressureData([]);
@@ -64,149 +396,24 @@ const KiloNewtonGauge = ({
     setIsTestRunning(true);
     setKNValue(0);
     
-    // Reset simulation state
-    currentPhaseRef.current = 'loading';
-    
-    // Generate random peak value between 800-1400 kN (realistic wood failure range)
-    targetPeakRef.current = Math.random() * (1400 - 800) + 800;
-    console.log('Target peak force:', targetPeakRef.current.toFixed(2), 'kN');
+    console.log('Test started at', new Date().toISOString());
   };
 
-  // Realistic pressure simulation
-  useEffect(() => {
-    if (!isTestRunning || testCompleted) {
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-        simulationIntervalRef.current = null;
-      }
-      return;
-    }
+  /**
+   * Stop the test
+   */
+  const stopTest = () => {
+    setIsTestRunning(false);
+    setTestCompleted(true);
+    
+    console.log('Test stopped. Max pressure:', maxPressure.value.toFixed(2), 'kN');
+  };
 
-    // Simulation runs at 50ms intervals (20 updates per second)
-    simulationIntervalRef.current = setInterval(() => {
-      const now = Date.now();
-      const elapsedSeconds = (now - testStartTime) / 1000;
-      
-      let newValue = kNValue;
-      const phase = currentPhaseRef.current;
-
-      switch (phase) {
-        case 'loading':
-          // Initial loading phase: rapid increase (first 1 second)
-          if (elapsedSeconds < 1.0) {
-            // Exponential increase for first second
-            const progress = elapsedSeconds;
-            newValue = targetPeakRef.current * 0.15 * progress;
-          } else {
-            currentPhaseRef.current = 'increasing';
-            console.log('Phase: Loading → Increasing');
-          }
-          break;
-
-        case 'increasing':
-          // Main increase phase: gradual increase with some noise
-          const progressToTarget = kNValue / targetPeakRef.current;
-          
-          if (progressToTarget < 0.95) {
-            // Increase rate slows as we approach peak (realistic material behavior)
-            const baseIncrease = (targetPeakRef.current * 0.02) * (1 - progressToTarget);
-            const noise = (Math.random() - 0.5) * 2; // ±1 kN noise
-            newValue = kNValue + baseIncrease + noise;
-            
-            // Clamp to not exceed target yet
-            if (newValue > targetPeakRef.current * 0.95) {
-              newValue = targetPeakRef.current * 0.95;
-            }
-          } else {
-            // Reached near-peak, enter peaking phase
-            currentPhaseRef.current = 'peaking';
-            peakReachedTimeRef.current = now;
-            console.log('Phase: Increasing → Peaking at', kNValue.toFixed(2), 'kN');
-          }
-          break;
-
-        case 'peaking':
-          // Peak phase: fluctuate around peak for 1-2 seconds (material at limit)
-          const timeSincePeak = (now - peakReachedTimeRef.current) / 1000;
-          
-          if (timeSincePeak < 1.5) {
-            // Small fluctuations around peak ±5 kN
-            const fluctuation = (Math.random() - 0.5) * 10;
-            newValue = targetPeakRef.current + fluctuation;
-            
-            // Stay within reasonable bounds
-            newValue = Math.max(
-              targetPeakRef.current * 0.95, 
-              Math.min(targetPeakRef.current * 1.05, newValue)
-            );
-          } else {
-            // Start failure/drop
-            currentPhaseRef.current = 'dropping';
-            console.log('Phase: Peaking → Dropping (material failure)');
-          }
-          break;
-
-        case 'dropping':
-          // Failure phase: rapid exponential drop (material breaking)
-          const dropProgress = (now - peakReachedTimeRef.current - 1500) / 1000;
-          
-          // Exponential decay with some noise
-          const dropRate = Math.exp(-dropProgress * 2); // Exponential decay
-          newValue = targetPeakRef.current * dropRate * 0.3;
-          
-          // Add some noise to simulate crack propagation
-          const dropNoise = (Math.random() - 0.5) * 5;
-          newValue += dropNoise;
-          
-          // Once dropped below 20% of peak, test is complete
-          if (newValue < targetPeakRef.current * 0.2) {
-            newValue = 0;
-            currentPhaseRef.current = 'complete';
-            setIsTestRunning(false);
-            setTestCompleted(true);
-            
-            clearInterval(simulationIntervalRef.current);
-            simulationIntervalRef.current = null;
-            
-            console.log('Test complete! Max pressure:', maxPressure.value.toFixed(2), 'kN');
-          }
-          break;
-      }
-
-      // Ensure non-negative
-      newValue = Math.max(0, newValue);
-
-      // Update current value
-      setKNValue(newValue);
-
-      // Add to pressure data
-      const currentTime = elapsedSeconds;
-      setPressureData(prevData => {
-        const newData = [...prevData, { time: currentTime, pressure: newValue }];
-        return newData;
-      });
-
-      // Track maximum pressure
-      if (newValue > maxPressure.value) {
-        setMaxPressure({ value: newValue, time: currentTime });
-      }
-
-      // Warning if exceeding warning threshold
-      setShowWarning(newValue > config.warning);
-
-    }, 50); // 20 updates per second
-
-    return () => {
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-      }
-    };
-  }, [isTestRunning, testCompleted, kNValue, testStartTime, config.warning, maxPressure.value]);
-
-  // Call onTestComplete when test finishes
+  /**
+   * Call onTestComplete when test finishes
+   */
   useEffect(() => {
     if (testCompleted && maxPressure.value > 0) {
-      // Prepare strength test data
       const strengthData = {
         maxForce: maxPressure.value,
         timestamp: new Date(testStartTime + (maxPressure.time * 1000)).toISOString(),
@@ -217,21 +424,22 @@ const KiloNewtonGauge = ({
       
       console.log('Sending test data to parent:', strengthData);
       
-      // Call onTestComplete with data
       if (typeof onTestComplete === 'function') {
         onTestComplete(strengthData);
       }
     }
   }, [testCompleted, maxPressure, testStartTime, pressureData, testType, onTestComplete]);
 
-  // Handle navigation with proper cleanup
+  // ============================================================================
+  // NAVIGATION HANDLERS
+  // ============================================================================
+
   const handlePreviousTest = () => {
     console.log("Previous Test button clicked");
     
-    // Stop simulation
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
+    // Stop test if running
+    if (isTestRunning) {
+      setIsTestRunning(false);
     }
     
     // Disconnect resize observer
@@ -245,20 +453,16 @@ const KiloNewtonGauge = ({
     }
     
     if (typeof onPreviousTest === 'function') {
-      console.log("Calling onPreviousTest function");
       onPreviousTest();
-    } else {
-      console.error("onPreviousTest is not a function", onPreviousTest);
     }
   };
 
   const handleMainPageReturn = () => {
     console.log("Main Page Return button clicked");
     
-    // Stop simulation
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
+    // Stop test if running
+    if (isTestRunning) {
+      setIsTestRunning(false);
     }
     
     // Disconnect resize observer
@@ -272,22 +476,20 @@ const KiloNewtonGauge = ({
     }
     
     if (typeof onMainPageReturn === 'function') {
-      console.log("Calling onMainPageReturn function");
       onMainPageReturn();
-    } else {
-      console.error("onMainPageReturn is not a function", onMainPageReturn);
     }
   };
 
-  // Initialize the D3 graph
+  // ============================================================================
+  // D3 GRAPH INITIALIZATION AND UPDATES
+  // ============================================================================
+
   useEffect(() => {
     if (!graphRef.current) return;
 
     try {
-      // Clear any previous SVG
       d3.select(graphRef.current).selectAll("svg").remove();
 
-      // Create SVG element
       const svg = d3.select(graphRef.current)
         .append("svg")
         .attr("width", "100%")
@@ -301,7 +503,6 @@ const KiloNewtonGauge = ({
     }
   }, []);
 
-  // Update the D3 graph when pressure data changes or container resizes
   useEffect(() => {
     if (!svgCreated || !svgRef.current || !graphRef.current) return;
     
@@ -318,47 +519,34 @@ const KiloNewtonGauge = ({
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
         
-        // Clear previous elements
         svg.selectAll("g").remove();
         
-        // Create main group element
         const g = svg.append("g")
           .attr("transform", `translate(${margin.left},${margin.top})`);
         
-        // Set up scales
         const xScale = d3.scaleLinear()
-          .domain([0, 30]) // Fixed at 30 seconds
+          .domain([0, 30])
           .range([0, innerWidth]);
         
         const yScale = d3.scaleLinear()
-          .domain([0, 1600]) // Fixed range 0-1600 kN
+          .domain([0, 1600])
           .range([innerHeight, 0]);
         
-        // Create axes
-        const xAxis = d3.axisBottom(xScale)
-          .ticks(15)
-          .tickFormat(d => d);
+        const xAxis = d3.axisBottom(xScale).ticks(15);
+        const yAxis = d3.axisLeft(yScale).ticks(8);
         
-        const yAxis = d3.axisLeft(yScale)
-          .ticks(8)
-          .tickFormat(d => d);
-        
-        // Add X axis
         g.append("g")
           .attr("class", "x-axis")
           .attr("transform", `translate(0,${innerHeight})`)
           .style("color", "white")
           .call(xAxis);
         
-        // Add Y axis
         g.append("g")
           .attr("class", "y-axis")
           .style("color", "white")
           .call(yAxis);
         
-        // Add axis labels
         g.append("text")
-          .attr("class", "x-label")
           .attr("text-anchor", "middle")
           .attr("x", innerWidth / 2)
           .attr("y", innerHeight + margin.bottom - 5)
@@ -367,7 +555,6 @@ const KiloNewtonGauge = ({
           .text("Time (seconds)");
         
         g.append("text")
-          .attr("class", "y-label")
           .attr("text-anchor", "middle")
           .attr("transform", "rotate(-90)")
           .attr("x", -innerHeight / 2)
@@ -376,12 +563,11 @@ const KiloNewtonGauge = ({
           .style("font-size", "12px")
           .text("Pressure (kN)");
         
-        // Add horizontal grid lines
+        // Grid lines
         g.selectAll("line.horizontalGrid")
           .data(yScale.ticks(8))
           .enter()
           .append("line")
-          .attr("class", "horizontalGrid")
           .attr("x1", 0)
           .attr("x2", innerWidth)
           .attr("y1", d => yScale(d))
@@ -389,12 +575,10 @@ const KiloNewtonGauge = ({
           .style("stroke", "rgba(255, 255, 255, 0.1)")
           .style("stroke-width", 0.5);
         
-        // Add vertical grid lines
         g.selectAll("line.verticalGrid")
           .data(xScale.ticks(15))
           .enter()
           .append("line")
-          .attr("class", "verticalGrid")
           .attr("x1", d => xScale(d))
           .attr("x2", d => xScale(d))
           .attr("y1", 0)
@@ -402,33 +586,26 @@ const KiloNewtonGauge = ({
           .style("stroke", "rgba(255, 255, 255, 0.1)")
           .style("stroke-width", 0.5);
         
-        // Only add data line if we have points
         if (pressureData.length > 0) {
-          // Create line generator
           const line = d3.line()
             .x(d => xScale(Math.min(30, d.time)))
             .y(d => yScale(d.pressure))
             .curve(d3.curveLinear);
           
-          // Add the line path
           g.append("path")
             .datum(pressureData)
-            .attr("class", "line")
             .attr("fill", "none")
             .attr("stroke", "white")
             .attr("stroke-width", 1.5)
             .attr("d", line);
           
-          // Add max point if available
           if (maxPressure.value > 0) {
             g.append("circle")
-              .attr("class", "max-point")
               .attr("cx", xScale(Math.min(30, maxPressure.time)))
               .attr("cy", yScale(maxPressure.value))
               .attr("r", 4)
               .attr("fill", "red");
             
-            // Add label for max point
             g.append("text")
               .attr("x", xScale(Math.min(30, maxPressure.time)))
               .attr("y", yScale(maxPressure.value) - 10)
@@ -444,14 +621,10 @@ const KiloNewtonGauge = ({
       }
     };
     
-    // Initial render
     updateGraph();
     
-    // Add resize listener
     try {
-      resizeObserverRef.current = new ResizeObserver(() => {
-        updateGraph();
-      });
+      resizeObserverRef.current = new ResizeObserver(updateGraph);
       
       if (graphRef.current) {
         resizeObserverRef.current.observe(graphRef.current);
@@ -460,7 +633,6 @@ const KiloNewtonGauge = ({
       console.error("Error setting up resize observer:", err);
     }
     
-    // Cleanup
     return () => {
       try {
         if (graphRef.current && resizeObserverRef.current) {
@@ -472,10 +644,9 @@ const KiloNewtonGauge = ({
     };
   }, [pressureData, svgCreated, maxPressure]);
 
-  // Handle warning popup close
-  const handleCloseWarning = () => {
-    setShowWarning(false);
-  };
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   return (
     <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900" ref={containerRef}>
@@ -483,11 +654,10 @@ const KiloNewtonGauge = ({
       <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
         <button
           type="button"
-          onClick={() => handlePreviousTest()}
+          onClick={handlePreviousTest}
           className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 
                    hover:text-blue-400 transition-colors duration-300"
         >
-          <span className="sr-only">Menu</span>
           ☰
         </button>
         <span className="ml-4 text-gray-100 text-lg font-semibold">
@@ -495,43 +665,55 @@ const KiloNewtonGauge = ({
         </span>
         <button
           type="button"
-          onClick={() => handleMainPageReturn()}
+          onClick={handleMainPageReturn}
           className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 ml-auto
                    hover:text-red-500 transition-colors duration-300"
         >
-          <span className="sr-only">Power</span>
           ⏻
         </button>
       </div>
 
-      {/* Main Content - Full Page */}
-      <div className="mt-12 flex flex-col flex-grow w-full h-full overflow-hidden flex justify-center items-center">
-        <div className="flex-grow flex flex-col mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-6 flex justify-center items-center">
-          {/* Curved Container */}
-          <div className="flex flex-col rounded-[30px] bg-gray-800 w-full flex-grow overflow-hidden p-4 mx-auto my-2 sm:my-4">
-            {/* Navigation Buttons */}
-            <div className="flex justify-between mb-4">
-              <button
-                type="button"
-                onClick={handlePreviousTest}
-                className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-              >
-                ← Previous Test
-              </button>
-              <button
-                type="button"
-                onClick={handleMainPageReturn}
-                className="px-3 py-1 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-              >
-                Home
-              </button>
+      {/* Main Content */}
+      <div className="mt-12 flex flex-col flex-grow w-full overflow-auto p-4">
+        <div className="max-w-6xl mx-auto w-full space-y-4">
+          
+          {/* Calibration Warning */}
+          {showCalibrationPrompt && !isCalibrated && (
+            <div className="bg-yellow-900 bg-opacity-30 border-2 border-yellow-500 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
+                <div className="flex-grow">
+                  <h3 className="text-xl font-bold text-yellow-300 mb-2">⚠️ Calibration Required</h3>
+                  <p className="text-yellow-200 mb-3">
+                    Position the actuator at the CENTER (0mm) reference point, then click Calibrate.
+                  </p>
+                  <button
+                    onClick={handleCalibrate}
+                    disabled={!wsConnected}
+                    className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    {wsConnected ? 'Calibrate Now' : 'WebSocket Disconnected'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pressure Graph Section */}
+          <div className="bg-gray-800 rounded-2xl p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-white">Pressure Monitoring</h2>
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                <span className="text-gray-300 text-sm">{wsConnected ? 'Connected' : 'Disconnected'}</span>
+              </div>
             </div>
             
-            {/* kN Value Display */}
-            <div className="text-center mb-2">
-              <div className="text-gray-200 text-4xl sm:text-5xl md:text-6xl font-sans">
+            {/* Current Pressure Display */}
+            <div className="text-center mb-4">
+              <div className="text-white text-5xl md:text-6xl font-bold">
                 {kNValue.toFixed(2)}
-                <span className="ml-2 text-xl sm:text-2xl md:text-3xl">kN</span>
+                <span className="ml-2 text-3xl">kN</span>
               </div>
               {maxPressure.value > 0 && (
                 <div className="text-gray-400 text-sm mt-2">
@@ -540,14 +722,11 @@ const KiloNewtonGauge = ({
               )}
             </div>
             
-            {/* Graph Container - Fill Available Space */}
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden flex-grow w-full mt-2 mb-2">
-              <div 
-                ref={graphRef} 
-                className="w-full h-full"
-              ></div>
+            {/* Graph Container */}
+            <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ height: '400px' }}>
+              <div ref={graphRef} className="w-full h-full"></div>
               
-              {/* Overlay for when test is not running */}
+              {/* Test Controls Overlay */}
               {!isTestRunning && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
                   {testCompleted ? (
@@ -559,7 +738,7 @@ const KiloNewtonGauge = ({
                       <button
                         type="button"
                         onClick={startTest}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-lg font-semibold"
                       >
                         Start New Test
                       </button>
@@ -568,7 +747,7 @@ const KiloNewtonGauge = ({
                     <button
                       type="button"
                       onClick={startTest}
-                      className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 text-lg font-semibold"
+                      className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xl font-semibold"
                     >
                       Start Test
                     </button>
@@ -576,22 +755,219 @@ const KiloNewtonGauge = ({
                 </div>
               )}
             </div>
+
+            {/* Stop Test Button */}
+            {isTestRunning && (
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={stopTest}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 text-lg font-semibold"
+                >
+                  Stop Test
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Actuator Manual Control Section */}
+          <div className="bg-gray-800 rounded-2xl p-6">
+            <h2 className="text-2xl font-bold text-white mb-4">Actuator Position Control</h2>
+            
+            {/* Current Position Display */}
+            <div className="bg-gray-900 rounded-lg p-4 mb-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-300">Current Position:</span>
+                <span className={`text-2xl font-bold ${
+                  currentPosition === ACTUATOR_POSITIONS.MID ? 'text-purple-400' :
+                  currentPosition === ACTUATOR_POSITIONS.LEFT ? 'text-green-400' :
+                  'text-blue-400'
+                }`}>
+                  {currentPosition}
+                </span>
+              </div>
+              {isMoving && targetPosition && (
+                <div className="mt-2 text-yellow-400 text-sm flex items-center gap-2">
+                  <Activity className="w-4 h-4 animate-pulse" />
+                  Moving to {targetPosition}...
+                </div>
+              )}
+              {manualDirection && (
+                <div className="mt-2 text-orange-400 text-sm flex items-center gap-2">
+                  <Activity className="w-4 h-4 animate-pulse" />
+                  Manual control: Moving {manualDirection}
+                </div>
+              )}
+            </div>
+
+            {/* Calibration Button */}
+            <div className="mb-4">
+              <button
+                onClick={handleCalibrate}
+                disabled={!wsConnected}
+                className="w-full py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 
+                          disabled:from-gray-600 disabled:to-gray-500 text-white font-bold rounded-lg transition-all 
+                          disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                {isCalibrated ? 'Recalibrate (Set 0mm Reference)' : 'Calibrate (Set 0mm Reference)'}
+              </button>
+            </div>
+
+            {/* Position Control Buttons */}
+            <div className="mb-4">
+              <p className="text-gray-400 text-sm mb-2 font-semibold">Quick Position Commands:</p>
+              <div className="grid grid-cols-3 gap-4">
+                <button
+                  onClick={() => moveToPosition(ACTUATOR_POSITIONS.LEFT)}
+                  disabled={!wsConnected || !isCalibrated || isMoving}
+                  className={`py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                    ${currentPosition === ACTUATOR_POSITIONS.LEFT 
+                      ? 'bg-green-700 border-2 border-green-400' 
+                      : 'bg-green-600 hover:bg-green-700'
+                    }
+                    disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                  <span>LEFT</span>
+                  {currentPosition === ACTUATOR_POSITIONS.LEFT && (
+                    <span className="text-xs">(Current)</span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => moveToPosition(ACTUATOR_POSITIONS.MID)}
+                  disabled={!wsConnected || !isCalibrated || isMoving}
+                  className={`py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                    ${currentPosition === ACTUATOR_POSITIONS.MID 
+                      ? 'bg-purple-700 border-2 border-purple-400' 
+                      : 'bg-purple-600 hover:bg-purple-700'
+                    }
+                    disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <Navigation className="w-6 h-6" />
+                  <span>MID</span>
+                  {currentPosition === ACTUATOR_POSITIONS.MID && (
+                    <span className="text-xs">(Current)</span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => moveToPosition(ACTUATOR_POSITIONS.RIGHT)}
+                  disabled={!wsConnected || !isCalibrated || isMoving}
+                  className={`py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                    ${currentPosition === ACTUATOR_POSITIONS.RIGHT 
+                      ? 'bg-blue-700 border-2 border-blue-400' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                    }
+                    disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <ArrowRight className="w-6 h-6" />
+                  <span>RIGHT</span>
+                  {currentPosition === ACTUATOR_POSITIONS.RIGHT && (
+                    <span className="text-xs">(Current)</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Manual Hold Controls */}
+            <div className="mb-4">
+              <p className="text-gray-400 text-sm mb-2 font-semibold">Manual Control (Press & Hold):</p>
+              <div className="grid grid-cols-3 gap-4">
+                {/* Hold Left */}
+                <button
+                  onMouseDown={() => handleManualMouseDown('LEFT')}
+                  onMouseUp={handleManualMouseUp}
+                  onMouseLeave={handleManualMouseUp}
+                  onTouchStart={() => handleManualMouseDown('LEFT')}
+                  onTouchEnd={handleManualMouseUp}
+                  disabled={!wsConnected || !isCalibrated}
+                  className={`py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                    ${manualDirection === 'LEFT' ? 'bg-green-800 scale-95' : 'bg-green-600 hover:bg-green-700'}
+                    disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95`}
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                  <span className="text-sm">Hold LEFT</span>
+                </button>
+
+                {/* Recenter */}
+                <button
+                  onClick={handleRecenter}
+                  disabled={!wsConnected || !isCalibrated || isMoving}
+                  className="py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                            bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Navigation className="w-6 h-6" />
+                  <span className="text-sm">Recenter</span>
+                </button>
+
+                {/* Hold Right */}
+                <button
+                  onMouseDown={() => handleManualMouseDown('RIGHT')}
+                  onMouseUp={handleManualMouseUp}
+                  onMouseLeave={handleManualMouseUp}
+                  onTouchStart={() => handleManualMouseDown('RIGHT')}
+                  onTouchEnd={handleManualMouseUp}
+                  disabled={!wsConnected || !isCalibrated}
+                  className={`py-4 px-6 rounded-xl font-bold text-white transition-all duration-300 flex flex-col items-center gap-2
+                    ${manualDirection === 'RIGHT' ? 'bg-blue-800 scale-95' : 'bg-blue-600 hover:bg-blue-700'}
+                    disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95`}
+                >
+                  <ArrowRight className="w-6 h-6" />
+                  <span className="text-sm">Hold RIGHT</span>
+                </button>
+              </div>
+              <p className="text-gray-500 text-xs mt-2 text-center">
+                💡 Press and hold Left/Right buttons to manually move the actuator
+              </p>
+            </div>
+
+            {/* Emergency Stop Button */}
+            <button
+              onClick={handleEmergencyStop}
+              disabled={!wsConnected || (!isMoving && !manualDirection)}
+              className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white font-bold rounded-lg 
+                        transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Square className="w-5 h-5" />
+              EMERGENCY STOP
+            </button>
+
+            {/* Safety Warning */}
+            <div className="mt-4 bg-orange-900 bg-opacity-30 border border-orange-700 rounded-lg p-3">
+              <p className="text-orange-200 text-sm">
+                ⚠️ <strong>Safety Feature:</strong> Direct movement between LEFT and RIGHT positions is prevented. 
+                You must pass through MID position first.
+              </p>
+            </div>
+          </div>
+
         </div>
       </div>
 
       {/* Warning Popup */}
       {showWarning && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white rounded-lg p-5 shadow-lg">
-            <h2 className="text-lg font-bold text-red-600">Warning!</h2>
-            <p className="mt-2">The sensor has exceeded the safe limit of {config.warning} kN!</p>
+          <div className="bg-white rounded-lg p-6 shadow-lg max-w-md">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600 flex-shrink-0" />
+              <div>
+                <h2 className="text-xl font-bold text-red-600 mb-2">Warning!</h2>
+                <p className="text-gray-700">
+                  The sensor has exceeded the safe limit of {config.warning} kN!
+                </p>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={handleCloseWarning}
-              className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
+              onClick={() => setShowWarning(false)}
+              className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
             >
-              Close
+              Acknowledge
             </button>
           </div>
         </div>
