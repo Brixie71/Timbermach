@@ -204,7 +204,7 @@ def validate_line_positions(
     calibration_factor: float = None
 ) -> Tuple[bool, str]:
     """
-    Validate that line positions are within image bounds and dimension limits
+    Validate that line positions are within image bounds
     
     Args:
         width_line1: X position of first vertical line
@@ -213,7 +213,7 @@ def validate_line_positions(
         height_line2: Y position of second horizontal line
         image_width: Actual image width in pixels
         image_height: Actual image height in pixels
-        calibration_factor: Optional calibration factor to check dimension limits (4-inch limit)
+        calibration_factor: Optional calibration factor (kept for API compatibility but not used for limits)
     
     Returns:
         Tuple of (is_valid, error_message)
@@ -242,22 +242,7 @@ def validate_line_positions(
     if abs(height_line2 - height_line1) < 10:
         return False, "Height lines must be at least 10 pixels apart"
     
-    # Check 4-inch (101.6mm) limit if calibration factor provided
-    if calibration_factor is not None:
-        MAX_DIMENSION_MM = 101.6  # 4 inches in millimeters
-        
-        width_pixels = abs(width_line2 - width_line1)
-        height_pixels = abs(height_line2 - height_line1)
-        
-        width_mm = width_pixels * calibration_factor
-        height_mm = height_pixels * calibration_factor
-        
-        if width_mm > MAX_DIMENSION_MM:
-            width_inches = width_mm / 25.4
-            return False, f"Width ({width_mm:.2f}mm / {width_inches:.2f}\") exceeds 4-inch limit"
-        
-        if height_mm > MAX_DIMENSION_MM:
-            height_inches = height_mm / 25.4
-            return False, f"Height ({height_mm:.2f}mm / {height_inches:.2f}\") exceeds 4-inch limit"
+    # ALL SIZE LIMIT CHECKS REMOVED - Accept any measurement size
+    # Previously checked 4-inch (101.6mm) limit - now removed
     
     return True, ""

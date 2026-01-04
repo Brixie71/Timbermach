@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Ruler, Download, Trash2, Info, Maximize2, Move, Check, ArrowRight, RotateCcw, Zap, ZapOff } from 'lucide-react';
+import { Camera, Ruler, Download, Trash2, Info, Maximize2, Move, Check, ArrowRight, RotateCcw } from 'lucide-react';
 
 const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testType = 'flexure', subType = '' }) => {
   // Debug: Log props on mount and when they change
@@ -10,26 +10,30 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const requiresLength = testType === 'compressive' || testType === 'shear';
   
   // HARDCODED CAMERA SELECTION & CALIBRATION
+  // For Compressive & Shear: Use "USB2.0 PC CAMERA" (back camera)
+  // For Flexure: Use "Integrated Webcam" (front camera)
   const CAMERA_DEVICE_ID = testType === 'flexure' ? 
-    'UVC Camera (12d1:4321)' :
-    'A4ech FHD 1080P PC Camera (09da:2704)'; 
+    'UVC Camera (12d1:4321)' :  // Change this to your front camera name
+    'A4ech FHD 1080P PC Camera (09da:2704)';     // Change this to your back camera name
+
+    // Development camera 'USB2.0 HD UVC WebCam (322e:202c)';     // Change this to your back camera name
   
   // HARDCODED CALIBRATION VALUES FOR EACH TEST TYPE
   const CALIBRATION_PRESETS = {
     flexure: {
-      manualFactor: 0.1568,
+      manualFactor: 0.1568,      // Updated calibration
       targetDistance: 210.30,
       cameraDistance: 210.30,
-      fixedLength: 533.4
+      fixedLength: 533.4  // 21 inches in mm (FIXED for flexure)
     },
     compressive: {
-      manualFactor: 0.1288,
-      targetDistance: 196.85,
+      manualFactor: 0.1288,      // TODO: Calibrate this value for compressive
+      targetDistance: 196.85,        // Adjust based on your setup
       cameraDistance: 196.85
     },
     shear: {
-      manualFactor: 0.1288,
-      targetDistance: 196.85,
+      manualFactor: 0.1288,      // TODO: Calibrate this value for shear
+      targetDistance: 196.85,        // Adjust based on your setup
       cameraDistance: 196.85
     }
   };
@@ -46,13 +50,10 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const [draggingLine, setDraggingLine] = useState(null);
   const [cameraDistance, setCameraDistance] = useState(CALIBRATION_PRESETS[testType].cameraDistance);
   const [calibrationFactor, setCalibrationFactor] = useState(null);
-  const [useManualCalibration, setUseManualCalibration] = useState(true); 
+  const [useManualCalibration, setUseManualCalibration] = useState(true); // Start with manual
   const [manualCalibrationFactor, setManualCalibrationFactor] = useState(CALIBRATION_PRESETS[testType].manualFactor);
   const [targetDistance, setTargetDistance] = useState(CALIBRATION_PRESETS[testType].targetDistance);
-  
-  // Default length set to 6 inches for the dropdown
-  const [lengthInput, setLengthInput] = useState('6');
-  
+  const [lengthInput, setLengthInput] = useState('');
   const [finalMeasurement, setFinalMeasurement] = useState(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [measurementHistory, setMeasurementHistory] = useState([]);
@@ -60,10 +61,6 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  // Auto-Detect State
-  const [autoDetect, setAutoDetect] = useState(false);
-  const [detectionStatus, setDetectionStatus] = useState('idle');
   
   // Virtual keyboard states
   const [showKeyboard, setShowKeyboard] = useState(false);
@@ -73,201 +70,13 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const captureCanvasRef = useRef(null);
-  // Hidden canvas for gaussian processing
-  const processingCanvasRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  
   const API_URL = 'http://localhost:5000';
+  
   const [videoResolution, setVideoResolution] = useState({ width: 1920, height: 1080 });
+  
   const SENSOR_WIDTH = 4.8;
   const FOCAL_LENGTH = 4.0;
   
-  // --- GAUSSIAN SQUARE DETECTION ALGORITHMS ---
-  const convertToGrayscale = (imageData) => {
-    const gray = new Uint8ClampedArray(imageData.width * imageData.height);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      gray[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    }
-    return gray;
-  };
-
-  const generateGaussianKernel = (size) => {
-    const sigma = size / 6;
-    const kernel = [];
-    const half = Math.floor(size / 2);
-    for (let y = -half; y <= half; y++) {
-      const row = [];
-      for (let x = -half; x <= half; x++) {
-        const value = Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
-        row.push(value);
-      }
-      kernel.push(row);
-    }
-    return kernel;
-  };
-
-  const applyGaussianBlur = (grayData, width, height, kernelSize = 5) => {
-    const output = new Uint8ClampedArray(grayData.length);
-    const kernel = generateGaussianKernel(kernelSize);
-    const half = Math.floor(kernelSize / 2);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0;
-        let weightSum = 0;
-        for (let ky = -half; ky <= half; ky++) {
-          for (let kx = -half; kx <= half; kx++) {
-            const px = Math.min(Math.max(x + kx, 0), width - 1);
-            const py = Math.min(Math.max(y + ky, 0), height - 1);
-            const weight = kernel[ky + half][kx + half];
-            sum += grayData[py * width + px] * weight;
-            weightSum += weight;
-          }
-        }
-        output[y * width + x] = Math.round(sum / weightSum);
-      }
-    }
-    return output;
-  };
-
-  const detectEdges = (grayData, width, height, lowThreshold = 50, highThreshold = 150) => {
-    const edges = new Uint8ClampedArray(grayData.length);
-    const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
-    const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let gx = 0, gy = 0;
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const pixel = grayData[(y + ky) * width + (x + kx)];
-            gx += pixel * sobelX[ky + 1][kx + 1];
-            gy += pixel * sobelY[ky + 1][kx + 1];
-          }
-        }
-        const magnitude = Math.sqrt(gx * gx + gy * gy);
-        if (magnitude > highThreshold) edges[y * width + x] = 255;
-        else if (magnitude > lowThreshold) edges[y * width + x] = 128;
-      }
-    }
-    return edges;
-  };
-
-  const traceContour = (edges, width, height, startX, startY, visited) => {
-    const contour = [];
-    const stack = [{ x: startX, y: startY }];
-    while (stack.length > 0 && contour.length < 10000) {
-      const { x, y } = stack.pop();
-      const idx = y * width + x;
-      if (visited.has(idx) || x < 0 || x >= width || y < 0 || y >= height || edges[idx] === 0) continue;
-      visited.add(idx);
-      contour.push({ x, y });
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx !== 0 || dy !== 0) stack.push({ x: x + dx, y: y + dy });
-        }
-      }
-    }
-    return contour;
-  };
-
-  const calculatePerimeter = (contour) => {
-    let perimeter = 0;
-    for (let i = 0; i < contour.length; i++) {
-      const p1 = contour[i];
-      const p2 = contour[(i + 1) % contour.length];
-      perimeter += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-    }
-    return perimeter;
-  };
-
-  const perpendicularDistance = (point, lineStart, lineEnd) => {
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    if (dx === 0 && dy === 0) return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
-    if (t < 0) return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
-    else if (t > 1) return Math.sqrt((point.x - lineEnd.x) ** 2 + (point.y - lineEnd.y) ** 2);
-    const projX = lineStart.x + t * dx;
-    const projY = lineStart.y + t * dy;
-    return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
-  };
-
-  const douglasPeucker = (points, tolerance) => {
-    if (points.length < 3) return points;
-    let maxDistance = 0;
-    let maxIndex = 0;
-    const first = points[0];
-    const last = points[points.length - 1];
-    for (let i = 1; i < points.length - 1; i++) {
-      const distance = perpendicularDistance(points[i], first, last);
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        maxIndex = i;
-      }
-    }
-    if (maxDistance > tolerance) {
-      const left = douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
-      const right = douglasPeucker(points.slice(maxIndex), tolerance);
-      return left.slice(0, -1).concat(right);
-    } else {
-      return [first, last];
-    }
-  };
-
-  const approximatePolygon = (contour, epsilon) => {
-    if (contour.length < 3) return contour;
-    const perimeter = calculatePerimeter(contour);
-    const tolerance = epsilon * perimeter;
-    return douglasPeucker(contour, tolerance);
-  };
-
-  const getMinBoundingRect = (contour) => {
-    if (contour.length === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    contour.forEach(point => {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-    return [
-      { x: minX, y: minY },
-      { x: maxX, y: minY },
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY }
-    ];
-  };
-
-  const sortCorners = (corners) => {
-    corners.sort((a, b) => a.y - b.y);
-    const top = corners.slice(0, 2).sort((a, b) => a.x - b.x);
-    const bottom = corners.slice(2, 4).sort((a, b) => a.x - b.x);
-    return [top[0], top[1], bottom[1], bottom[0]];
-  };
-
-  const findSquareCorners = (edges, width, height) => {
-    const visited = new Set();
-    let largestContour = [];
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = y * width + x;
-        if (edges[idx] > 0 && !visited.has(idx)) {
-          const contour = traceContour(edges, width, height, x, y, visited);
-          if (contour.length > largestContour.length) largestContour = contour;
-        }
-      }
-    }
-    if (largestContour.length < 100) return null;
-    const approx = approximatePolygon(largestContour, 0.02);
-    if (approx.length === 4) return sortCorners(approx);
-    else if (approx.length > 4) return getMinBoundingRect(largestContour);
-    return null;
-  };
-  // --- END IMAGE PROCESSING ---
-
   // Start camera on mount and update calibration when test type changes
   useEffect(() => {
     // Update calibration values when test type changes
@@ -290,82 +99,18 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       setCalibrationFactor(pixelSizeMM);
     }
   }, [cameraDistance, videoResolution.width, useManualCalibration, manualCalibrationFactor]);
-
-  // AUTO-DETECT LOOP
-  useEffect(() => {
-    const processFrame = () => {
-      if (!isCameraActive || !autoDetect || !videoRef.current || !processingCanvasRef.current) {
-        if (autoDetect && isCameraActive) {
-          animationFrameRef.current = requestAnimationFrame(processFrame);
-        }
-        return;
-      }
-
-      const video = videoRef.current;
-      const canvas = processingCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      
-      if (video.videoWidth === 0) return;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      ctx.drawImage(video, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      try {
-        const grayData = convertToGrayscale(imageData);
-        const blurredData = applyGaussianBlur(grayData, canvas.width, canvas.height);
-        const edges = detectEdges(blurredData, canvas.width, canvas.height);
-        const corners = findSquareCorners(edges, canvas.width, canvas.height);
-        
-        if (corners && corners.length === 4) {
-          const P1 = corners[0];
-          const P2 = corners[1];
-          const P3 = corners[2];
-          const P4 = corners[3];
-          
-          const newW1 = (P1.x + P4.x) / 2;
-          const newW2 = (P2.x + P3.x) / 2;
-          const newH1 = (P1.y + P2.y) / 2;
-          const newH2 = (P3.y + P4.y) / 2;
-          
-          setWidthLine1(newW1);
-          setWidthLine2(newW2);
-          setHeightLine1(newH1);
-          setHeightLine2(newH2);
-          
-          setDetectionStatus('detected');
-        } else {
-          setDetectionStatus('searching');
-        }
-      } catch (err) {
-        console.error('Detection error', err);
-        setDetectionStatus('error');
-      }
-      
-      animationFrameRef.current = requestAnimationFrame(processFrame);
-    };
-    
-    if (autoDetect && isCameraActive) {
-      animationFrameRef.current = requestAnimationFrame(processFrame);
-    } else {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      setDetectionStatus('idle');
-    }
-    
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [autoDetect, isCameraActive]);
   
   const startCamera = async () => {
     try {
       setError(null);
+      
+      // Get list of all video devices
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
       
       console.log('Available cameras:', videoDevices.map(d => ({ label: d.label, id: d.deviceId })));
       
+      // Find camera by label (contains the name)
       const targetCamera = videoDevices.find(device => 
         device.label.includes(CAMERA_DEVICE_ID)
       );
@@ -382,6 +127,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
         };
       } else {
         console.warn(`Camera "${CAMERA_DEVICE_ID}" not found, using default`);
+        // Fallback to facingMode
         constraints = {
           video: {
             facingMode: testType === 'flexure' ? 'user' : 'environment',
@@ -392,23 +138,28 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       }
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Set stream first
       setStream(mediaStream);
       setIsCameraActive(true);
 
+      // Then attach to video element
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        
+        // Wait for metadata to load and get actual resolution
         videoRef.current.onloadedmetadata = () => {
           const actualWidth = videoRef.current.videoWidth;
           const actualHeight = videoRef.current.videoHeight;
+          
+          console.log(`Camera resolution: ${actualWidth}x${actualHeight}`);
           setVideoResolution({ width: actualWidth, height: actualHeight });
           
-          // Only reset lines if not in auto-detect mode
-          if (!autoDetect) {
-            setWidthLine1(Math.floor(actualWidth * 0.15));
-            setWidthLine2(Math.floor(actualWidth * 0.85));
-            setHeightLine1(Math.floor(actualHeight * 0.15));
-            setHeightLine2(Math.floor(actualHeight * 0.85));
-          }
+          // Set initial line positions based on actual resolution
+          setWidthLine1(Math.floor(actualWidth * 0.15));
+          setWidthLine2(Math.floor(actualWidth * 0.85));
+          setHeightLine1(Math.floor(actualHeight * 0.15));
+          setHeightLine2(Math.floor(actualHeight * 0.85));
           
           videoRef.current.play().catch(err => {
             console.error('Error playing video:', err);
@@ -416,6 +167,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
           });
         };
       }
+
     } catch (err) {
       console.error('Error accessing camera:', err);
       setError(`Failed to access camera: ${err.message}`);
@@ -429,11 +181,11 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       setStream(null);
     }
     setIsCameraActive(false);
-    setAutoDetect(false);
   };
 
   const capturePhoto = () => {
     if (!videoRef.current || !captureCanvasRef.current) return;
+
     const video = videoRef.current;
     const canvas = captureCanvasRef.current;
     const context = canvas.getContext('2d');
@@ -449,9 +201,12 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
     }, 'image/jpeg', 0.95);
 
     setImageDimensions({ width: canvas.width, height: canvas.height });
+    setWidthLine1(Math.floor(canvas.width * 0.15));
+    setWidthLine2(Math.floor(canvas.width * 0.85));
+    setHeightLine1(Math.floor(canvas.height * 0.15));
+    setHeightLine2(Math.floor(canvas.height * 0.85));
     
     setCapturedImage(imageData);
-    setAutoDetect(false); // Stop auto detect when capturing
     stopCamera();
   };
 
@@ -471,38 +226,68 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   
   // Calculate area based on test type and subtype
   const calculateArea = () => {
+    // Debug logging
+    console.log('calculateArea called:', { testType, subType, lengthInput });
+    
+    // For compressive and shear tests that need length
     if (testType === 'compressive' && subType === 'Perpendicular') {
+      // Perpendicular: L × W
       const lengthMM = parseFloat(lengthInput) * 25.4;
-      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) return 0;
+      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) {
+        return 0; // Return 0 if no valid length yet
+      }
+      console.log('Using Perpendicular formula: L × W =', lengthMM, '×', widthMM);
       return lengthMM * widthMM;
     } else if (testType === 'shear') {
+      // Shear: W × L (single or double)
       const lengthMM = parseFloat(lengthInput) * 25.4;
-      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) return 0;
+      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) {
+        return 0; // Return 0 if no valid length yet
+      }
       const baseArea = widthMM * lengthMM;
-      if (subType === 'Double') return baseArea * 2;
-      else return baseArea;
+      if (subType === 'Double') {
+        console.log('Using Double Shear formula: (W × L) × 2 =', baseArea, '× 2');
+        return baseArea * 2;
+      } else {
+        console.log('Using Single Shear formula: W × L =', baseArea);
+        return baseArea;
+      }
     } else if (testType === 'flexure') {
+      // Flexure: W × H (L is fixed)
+      console.log('Using Flexure formula: W × H =', widthMM, '×', heightMM);
       return widthMM * heightMM;
     } else if (testType === 'compressive' && subType === 'Parallel') {
+      // Parallel: W × H
+      console.log('Using Parallel formula: W × H =', widthMM, '×', heightMM);
       return widthMM * heightMM;
     }
+    
+    // Default fallback: W × H
+    console.log('Using default formula: W × H =', widthMM, '×', heightMM);
     return widthMM * heightMM;
   };
   
   const areaMM2 = calculateArea();
   const areaIN2 = areaMM2 / 645.16;
+  
+  // Safe display values (avoid NaN)
   const displayAreaMM2 = isNaN(areaMM2) || !isFinite(areaMM2) ? 0 : areaMM2;
   const displayAreaIN2 = isNaN(areaIN2) || !isFinite(areaIN2) ? 0 : areaIN2;
   
+  // Virtual Keyboard Handlers
   const handleInputFocus = (fieldName) => {
     setActiveInputField(fieldName);
-    if (fieldName === 'cameraDistance') {
+    
+    if (fieldName === 'lengthInput') {
+      setKeyboardInput(lengthInput);
+    } else if (fieldName === 'cameraDistance') {
       setKeyboardInput(cameraDistance.toString());
     } else if (fieldName === 'targetDistance') {
       setKeyboardInput(targetDistance.toString());
     } else if (fieldName === 'manualCalibrationFactor') {
       setKeyboardInput(manualCalibrationFactor.toString());
     }
+    
     setShowKeyboard(true);
   };
   
@@ -511,7 +296,10 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   };
   
   const handleKeyboardClose = () => {
-    if (activeInputField === 'cameraDistance') {
+    // Apply the input to the appropriate field
+    if (activeInputField === 'lengthInput') {
+      setLengthInput(keyboardInput);
+    } else if (activeInputField === 'cameraDistance') {
       const val = parseFloat(keyboardInput);
       setCameraDistance(isNaN(val) ? CALIBRATION_PRESETS[testType].cameraDistance : val);
     } else if (activeInputField === 'targetDistance') {
@@ -530,32 +318,55 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const drawLines = () => {
     const canvas = canvasRef.current;
     if (!canvas || !capturedImage) return;
+    
     const ctx = canvas.getContext('2d');
     const img = new Image();
+    
     img.onload = () => {
       canvas.width = imageDimensions.width;
       canvas.height = imageDimensions.height;
+      
       ctx.drawImage(img, 0, 0, imageDimensions.width, imageDimensions.height);
       
       // Draw red lines (width)
       ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(widthLine1, 0); ctx.lineTo(widthLine1, imageDimensions.height); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(widthLine2, 0); ctx.lineTo(widthLine2, imageDimensions.height); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(widthLine1, 0);
+      ctx.lineTo(widthLine1, imageDimensions.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(widthLine2, 0);
+      ctx.lineTo(widthLine2, imageDimensions.height);
+      ctx.stroke();
       
       ctx.fillStyle = 'rgba(255, 0, 0, 1)';
-      ctx.beginPath(); ctx.arc(widthLine1, imageDimensions.height / 2, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(widthLine2, imageDimensions.height / 2, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(widthLine1, imageDimensions.height / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(widthLine2, imageDimensions.height / 2, 10, 0, Math.PI * 2);
+      ctx.fill();
       
       // Draw green lines (height)
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(0, heightLine1); ctx.lineTo(imageDimensions.width, heightLine1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, heightLine2); ctx.lineTo(imageDimensions.width, heightLine2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, heightLine1);
+      ctx.lineTo(imageDimensions.width, heightLine1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, heightLine2);
+      ctx.lineTo(imageDimensions.width, heightLine2);
+      ctx.stroke();
       
       ctx.fillStyle = 'rgba(0, 255, 0, 1)';
-      ctx.beginPath(); ctx.arc(imageDimensions.width / 2, heightLine1, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(imageDimensions.width / 2, heightLine2, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(imageDimensions.width / 2, heightLine1, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(imageDimensions.width / 2, heightLine2, 10, 0, Math.PI * 2);
+      ctx.fill();
       
       // Labels
       const widthLabelY = 30;
@@ -576,6 +387,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       ctx.textAlign = 'center';
       ctx.fillText(`Height: ${heightMM.toFixed(2)} mm`, heightLabelX, heightLabelY);
     };
+    
     img.src = capturedImage;
   };
   
@@ -584,14 +396,17 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   }, [capturedImage, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM]);
   
   const handleMouseDownOnVideo = (e) => {
-    if (!videoRef.current || autoDetect) return;
+    if (!videoRef.current) return;
+    
     const video = videoRef.current;
     const rect = video.getBoundingClientRect();
     const scaleX = videoResolution.width / rect.width;
     const scaleY = videoResolution.height / rect.height;
     const x = Math.round((e.clientX - rect.left) * scaleX);
     const y = Math.round((e.clientY - rect.top) * scaleY);
-    const threshold = 40;
+    
+    const threshold = 40; // Larger threshold for easier dragging
+    
     if (Math.abs(x - widthLine1) < threshold) setDraggingLine('widthLine1');
     else if (Math.abs(x - widthLine2) < threshold) setDraggingLine('widthLine2');
     else if (Math.abs(y - heightLine1) < threshold) setDraggingLine('heightLine1');
@@ -599,28 +414,38 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   };
   
   const handleMouseMoveOnVideo = (e) => {
-    if (!draggingLine || !videoRef.current || autoDetect) return;
+    if (!draggingLine || !videoRef.current) return;
+    
     const video = videoRef.current;
     const rect = video.getBoundingClientRect();
     const scaleX = videoResolution.width / rect.width;
     const scaleY = videoResolution.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
-    if (draggingLine === 'widthLine1') setWidthLine1(Math.max(0, Math.min(x, videoResolution.width)));
-    else if (draggingLine === 'widthLine2') setWidthLine2(Math.max(0, Math.min(x, videoResolution.width)));
-    else if (draggingLine === 'heightLine1') setHeightLine1(Math.max(0, Math.min(y, videoResolution.height)));
-    else if (draggingLine === 'heightLine2') setHeightLine2(Math.max(0, Math.min(y, videoResolution.height)));
+    
+    if (draggingLine === 'widthLine1') {
+      setWidthLine1(Math.max(0, Math.min(x, videoResolution.width)));
+    } else if (draggingLine === 'widthLine2') {
+      setWidthLine2(Math.max(0, Math.min(x, videoResolution.width)));
+    } else if (draggingLine === 'heightLine1') {
+      setHeightLine1(Math.max(0, Math.min(y, videoResolution.height)));
+    } else if (draggingLine === 'heightLine2') {
+      setHeightLine2(Math.max(0, Math.min(y, videoResolution.height)));
+    }
   };
   
   const handleMouseDown = (e) => {
     if (!canvasRef.current) return;
+    
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const scaleX = imageDimensions.width / rect.width;
     const scaleY = imageDimensions.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
+    
     const threshold = 40;
+    
     if (Math.abs(x - widthLine1) < threshold) setDraggingLine('widthLine1');
     else if (Math.abs(x - widthLine2) < threshold) setDraggingLine('widthLine2');
     else if (Math.abs(y - heightLine1) < threshold) setDraggingLine('heightLine1');
@@ -629,16 +454,23 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   
   const handleMouseMove = (e) => {
     if (!draggingLine || !canvasRef.current) return;
+    
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const scaleX = imageDimensions.width / rect.width;
     const scaleY = imageDimensions.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
-    if (draggingLine === 'widthLine1') setWidthLine1(Math.max(0, Math.min(x, imageDimensions.width)));
-    else if (draggingLine === 'widthLine2') setWidthLine2(Math.max(0, Math.min(x, imageDimensions.width)));
-    else if (draggingLine === 'heightLine1') setHeightLine1(Math.max(0, Math.min(y, imageDimensions.height)));
-    else if (draggingLine === 'heightLine2') setHeightLine2(Math.max(0, Math.min(y, imageDimensions.height)));
+    
+    if (draggingLine === 'widthLine1') {
+      setWidthLine1(Math.max(0, Math.min(x, imageDimensions.width)));
+    } else if (draggingLine === 'widthLine2') {
+      setWidthLine2(Math.max(0, Math.min(x, imageDimensions.width)));
+    } else if (draggingLine === 'heightLine1') {
+      setHeightLine1(Math.max(0, Math.min(y, imageDimensions.height)));
+    } else if (draggingLine === 'heightLine2') {
+      setHeightLine2(Math.max(0, Math.min(y, imageDimensions.height)));
+    }
   };
   
   const handleMouseUp = () => {
@@ -651,45 +483,54 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       return;
     }
     
-    // Auto capture if not yet captured
-    if (!capturedImage) {
-      capturePhoto();
-    }
+    // Capture current frame from video
+    const video = videoRef.current;
+    const canvas = captureCanvasRef.current;
+    const context = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
+    // Convert to blob for API
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.95);
+    });
+    
+    const imageFile = new File([blob], 'measurement.jpg', { type: 'image/jpeg' });
+    
+    // For flexure, use fixed length
     let lengthMM;
     if (testType === 'flexure') {
-      lengthMM = CALIBRATION_PRESETS.flexure.fixedLength;
+      lengthMM = CALIBRATION_PRESETS.flexure.fixedLength; // 533.4mm (21 inches)
     } else if (requiresLength) {
       if (!lengthInput || parseFloat(lengthInput) <= 0) {
-        setError('Please select valid length');
+        setError('Please enter valid length');
         return;
       }
       lengthMM = parseFloat(lengthInput) * 25.4;
     }
+    
+    // All size limit checks removed - record any measurement
     
     setIsProcessing(true);
     setError(null);
     
     try {
       const formData = new FormData();
-      if(imageFile) formData.append('image', imageFile);
+      formData.append('image', imageFile);
       formData.append('widthLine1', Math.round(widthLine1));
       formData.append('widthLine2', Math.round(widthLine2));
       formData.append('heightLine1', Math.round(heightLine1));
       formData.append('heightLine2', Math.round(heightLine2));
       formData.append('cameraDistance', cameraDistance);
       
-      // Calculate locally (simulated API response) to ensure UI works standalone
-      const data = {
-         success: true,
-         widthPixels: widthPixels,
-         heightPixels: heightPixels,
-         widthMM: widthMM,
-         heightMM: heightMM,
-         widthInches: (widthMM / 25.4).toFixed(3),
-         heightInches: (heightMM / 25.4).toFixed(3),
-         calibrationFactor: calibrationFactor
-      };
+      const response = await fetch(`${API_URL}/manual-measure/calculate`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
       
       if (!data.success) {
         setError(data.error || 'Measurement failed');
@@ -706,8 +547,8 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
         heightPixels: data.heightPixels,
         width: data.widthMM,
         height: data.heightMM,
-        areaMM2: areaMM2,
-        areaIN2: areaIN2,
+        areaMM2: areaMM2, // Use calculated area
+        areaIN2: areaIN2, // Use calculated area in inches
         widthInches: data.widthInches,
         heightInches: data.heightInches,
         calibrationFactor: data.calibrationFactor,
@@ -724,18 +565,15 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
       setFinalMeasurement(newMeasurement);
       setMeasurementHistory(prev => [...prev, newMeasurement]);
       setMeasurementCounter(prev => prev + 1);
-      setCurrentStep(2); // Show results view
+      setCurrentStep(2);
       setIsProcessing(false);
+      
+      // Stop camera after successful measurement
       stopCamera();
       
-      // --- FIX FOR NAVIGATION ISSUE ---
-      // We comment this out so it doesn't trigger a page change in the parent component.
-      // This allows the user to see the Step 2 (Results) view inside this file.
-      /*
       if (typeof onTestComplete === 'function') {
         onTestComplete(newMeasurement);
       }
-      */
       
     } catch (err) {
       setError('Failed: ' + err.message);
@@ -771,19 +609,25 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
     setCurrentStep(1);
     setCapturedImage(null);
     setImageFile(null);
-    // Keep length input selection
+    setLengthInput('');
     setFinalMeasurement(null);
     setError(null);
     startCamera();
   };
   
+  // Get area calculation description
   const getAreaDescription = () => {
-    if (testType === 'flexure') return 'Area = W × H (L fixed at 21")';
-    else if (testType === 'compressive') {
-      if (subType === 'Perpendicular') return 'Area = L × W (Perpendicular to Grain)';
+    if (testType === 'flexure') {
+      return 'Area = W × H (L fixed at 21")';
+    } else if (testType === 'compressive') {
+      if (subType === 'Perpendicular') {
+        return 'Area = L × W (Perpendicular to Grain)';
+      }
       return 'Area = W × H (Parallel to Grain)';
     } else if (testType === 'shear') {
-      if (subType === 'Double') return 'Area = (W × L) × 2 (Double Shear)';
+      if (subType === 'Double') {
+        return 'Area = (W × L) × 2 (Double Shear)';
+      }
       return 'Area = W × L (Single Shear)';
     }
     return 'Area = W × H';
@@ -791,13 +635,11 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   
   return (
     <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900">
-      {/* Hidden processing canvas for Gaussian detection */}
-      <canvas ref={processingCanvasRef} className="hidden" />
-
       <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
         <button type="button" onClick={onPreviousTest} className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 hover:text-blue-400 transition-colors">←</button>
         <span className="ml-4 text-gray-100 text-lg font-semibold">TimberMach | Manual Lines ({testType.charAt(0).toUpperCase() + testType.slice(1)})</span>
         
+        {/* Camera Indicator with Calibration Status */}
         <div className="ml-4 flex items-center gap-2 bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg px-3 py-1">
           <Camera className="w-4 h-4 text-blue-400" />
           <span className="text-blue-400 text-sm font-semibold">{CAMERA_DEVICE_ID}</span>
@@ -905,17 +747,16 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">
                         <Ruler className="w-4 h-4 inline mr-2" />
-                        Length (in)
+                        Length (in, max 12")
                       </label>
-                      {/* CHANGED: Textbox replaced with Dropdown */}
-                      <select
-                        value={lengthInput}
-                        onChange={(e) => setLengthInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="6">6 inches</option>
-                        <option value="9">9 inches</option>
-                      </select>
+                      <input 
+                        type="text" 
+                        value={lengthInput} 
+                        onFocus={() => handleInputFocus('lengthInput')}
+                        readOnly
+                        placeholder="Enter length" 
+                        className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer" 
+                      />
                     </div>
                   )}
                   
@@ -953,26 +794,16 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                     <Info className="w-4 h-4" />
                     {getAreaDescription()}
                   </div>
+                  {((testType === 'compressive' && subType === 'Perpendicular') || testType === 'shear') && 
+                   (!lengthInput || parseFloat(lengthInput) <= 0) && (
+                    <div className="text-yellow-300 text-xs mt-2">
+                      ⚠ Length required for area calculation
+                    </div>
+                  )}
                 </div>
-
-                {/* Auto-Detect Toggle Button */}
-                {isCameraActive && (
-                  <button 
-                    type="button" 
-                    onClick={() => setAutoDetect(!autoDetect)}
-                    className={`w-full mb-3 px-6 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
-                      autoDetect 
-                        ? 'bg-purple-600 text-white hover:bg-purple-700' 
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {autoDetect ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-                    {autoDetect ? 'Auto-Detect ON (Gaussian)' : 'Enable Gaussian Auto-Detect'}
-                  </button>
-                )}
                 
                 <button type="button" onClick={performMeasurement} disabled={!isCameraActive || isProcessing} className={`w-full px-6 py-3 rounded-lg font-semibold transition-colors ${!isCameraActive || isProcessing ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                  {isProcessing ? 'Processing...' : 'Capture & Measure'}
+                  {isProcessing ? 'Processing...' : 'Perform Measurement'}
                 </button>
               </div>
               
@@ -988,16 +819,6 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                     <Camera className="w-4 h-4 mr-2" />
                     {capturedImage ? 'Captured Image' : 'Camera View'}
                   </h3>
-
-                  {/* Detection Status Indicator */}
-                  {isCameraActive && autoDetect && (
-                    <div className={`px-3 py-1 rounded text-xs font-bold ${
-                      detectionStatus === 'detected' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'
-                    }`}>
-                      {detectionStatus === 'detected' ? '✓ Square Detected' : 'Scanning...'}
-                    </div>
-                  )}
-
                   {capturedImage && (
                     <button 
                       type="button" 
@@ -1042,7 +863,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                     
                     {/* SVG Overlay for measurement lines */}
                     <svg 
-                      className={`absolute inset-0 ${autoDetect ? 'pointer-events-none' : ''}`}
+                      className="absolute inset-0 pointer-events-none"
                       style={{ 
                         width: '100%', 
                         height: '100%',
@@ -1069,13 +890,19 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                         strokeWidth="3"
                       />
                       
-                      {/* Handles (hidden in autoDetect) */}
-                      {!autoDetect && (
-                        <>
-                          <circle cx={`${(widthLine1 / videoResolution.width) * 100}%`} cy="50%" r="10" fill="rgba(255, 0, 0, 1)"/>
-                          <circle cx={`${(widthLine2 / videoResolution.width) * 100}%`} cy="50%" r="10" fill="rgba(255, 0, 0, 1)"/>
-                        </>
-                      )}
+                      {/* Red circles (width handles) */}
+                      <circle 
+                        cx={`${(widthLine1 / videoResolution.width) * 100}%`}
+                        cy="50%" 
+                        r="10" 
+                        fill="rgba(255, 0, 0, 1)"
+                      />
+                      <circle 
+                        cx={`${(widthLine2 / videoResolution.width) * 100}%`}
+                        cy="50%" 
+                        r="10" 
+                        fill="rgba(255, 0, 0, 1)"
+                      />
                       
                       {/* Green horizontal lines (height) */}
                       <line 
@@ -1095,14 +922,22 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                         strokeWidth="3"
                       />
                       
-                      {!autoDetect && (
-                        <>
-                          <circle cx="50%" cy={`${(heightLine1 / videoResolution.height) * 100}%`} r="10" fill="rgba(0, 255, 0, 1)"/>
-                          <circle cx="50%" cy={`${(heightLine2 / videoResolution.height) * 100}%`} r="10" fill="rgba(0, 255, 0, 1)"/>
-                        </>
-                      )}
+                      {/* Green circles (height handles) */}
+                      <circle 
+                        cx="50%" 
+                        cy={`${(heightLine1 / videoResolution.height) * 100}%`}
+                        r="10" 
+                        fill="rgba(0, 255, 0, 1)"
+                      />
+                      <circle 
+                        cx="50%" 
+                        cy={`${(heightLine2 / videoResolution.height) * 100}%`}
+                        r="10" 
+                        fill="rgba(0, 255, 0, 1)"
+                      />
                     </svg>
                     
+                    {/* Measurement indicators with distance warning */}
                     <div className="absolute bottom-2 left-2 right-2 space-y-1 pointer-events-none">
                       {/* Distance Warning */}
                       <div className={`text-center py-2 rounded-lg font-bold text-sm ${
@@ -1123,10 +958,12 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                           <div className="text-center">
                             <div className="text-red-400 font-semibold">Width</div>
                             <div className="text-white">{widthMM.toFixed(1)} mm</div>
+                            <div className="text-gray-400">{(widthMM / 25.4).toFixed(2)}"</div>
                           </div>
                           <div className="text-center">
                             <div className="text-green-400 font-semibold">Height</div>
                             <div className="text-white">{heightMM.toFixed(1)} mm</div>
+                            <div className="text-gray-400">{(heightMM / 25.4).toFixed(2)}"</div>
                           </div>
                           {(requiresLength || testType === 'flexure') && (
                             <div className="text-center">
@@ -1134,11 +971,15 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                               <div className="text-white">
                                 {testType === 'flexure' ? '21.00"' : (lengthInput || '—')+"\""}
                               </div>
+                              <div className="text-gray-400">
+                                {testType === 'flexure' ? 'FIXED' : 'Required'}
+                              </div>
                             </div>
                           )}
                           <div className="text-center">
                             <div className="text-purple-400 font-semibold">{getAreaDescription()}</div>
                             <div className="text-white">{displayAreaMM2.toFixed(0)} mm²</div>
+                            <div className="text-gray-400">{displayAreaIN2.toFixed(2)} in²</div>
                           </div>
                         </div>
                       </div>
@@ -1208,22 +1049,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
                     Measurement Complete
                     <span className="ml-3 px-3 py-1 bg-blue-600 text-white text-sm rounded-full">#{finalMeasurement.id}</span>
                   </h3>
-                  <div className="flex gap-3">
-                    <button 
-                      type="button" 
-                      onClick={startNewMeasurement} 
-                      className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 border border-gray-600"
-                    >
-                      Retake
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => onTestComplete(finalMeasurement)} // This triggers the transition
-                      className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 flex items-center"
-                    >
-                      Proceed to Strength Test <ArrowRight className="ml-2 w-4 h-4" />
-                    </button>
-                  </div>
+                  <button type="button" onClick={startNewMeasurement} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">New Measurement</button>
                 </div>
                 
                 <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-4">

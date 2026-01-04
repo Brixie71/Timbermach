@@ -202,7 +202,7 @@ const WoodTests = ({ darkMode = false }) => {
   const determineTestSequence = () => {
     const sequence = [];
     if (includeMoisture) sequence.push("moistureTest");
-    if (includeMeasurement) sequence.push("dimensionTest");
+    sequence.push("dimensionTest"); // Always include measurement
     sequence.push("mainTest");
     sequence.push("summary");
     return sequence;
@@ -347,6 +347,7 @@ const WoodTests = ({ darkMode = false }) => {
           }}
           specimenName={specimenName}
           testType={selectedTest.toLowerCase().replace(" test", "")}
+          subType={subType}
         />
       );
     }
@@ -375,9 +376,7 @@ const WoodTests = ({ darkMode = false }) => {
         <TestSummary
           testData={testData}
           onRetakeMoisture={includeMoisture ? handleRetakeMoisture : null}
-          onRetakeMeasurement={
-            includeMeasurement ? handleRetakeMeasurement : null
-          }
+          onRetakeMeasurement={handleRetakeMeasurement}
           onRetakeStrength={handleRetakeStrength}
           onBackToMenu={handleSummaryComplete}
         />
@@ -700,30 +699,16 @@ const WoodTests = ({ darkMode = false }) => {
                     Moisture Test
                   </span>
                 </label>
-                <label
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 cursor-pointer transition-colors ${
+                <div
+                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 ${
                     darkMode
-                      ? "border-gray-600 bg-gray-800 hover:bg-gray-700"
-                      : "border-gray-300 bg-white hover:bg-gray-50"
-                  } ${includeMeasurement ? (darkMode ? "bg-blue-900" : "bg-blue-100") : ""}`}
+                      ? "bg-gray-700 text-gray-300 border-gray-600"
+                      : "bg-gray-200 text-gray-700 border-gray-300"
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={includeMeasurement}
-                    onChange={(e) => {
-                      audio.play();
-                      setIncludeMeasurement(e.target.checked);
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span
-                    className={`font-medium text-[15px] ${
-                      darkMode ? "text-gray-200" : "text-gray-900"
-                    }`}
-                  >
-                    Measurement Test
-                  </span>
-                </label>
+                  <span className="font-medium text-[15px]">Measurement Test</span>
+                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
+                </div>
                 <div
                   className={`flex-1 flex items-center gap-2 px-2 ${
                     darkMode
@@ -732,6 +717,7 @@ const WoodTests = ({ darkMode = false }) => {
                   }`}
                 >
                   <span className="font-medium text-[15px]">Strength Test</span>
+                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
                 </div>
               </div>
             </div>
@@ -775,30 +761,18 @@ const WoodTests = ({ darkMode = false }) => {
                     Moisture Test
                   </span>
                 </label>
-                <label
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 cursor-pointer transition-colors ${
+                <div
+                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 ${
                     darkMode
-                      ? "border-gray-600 bg-gray-800 hover:bg-gray-700"
-                      : "border-gray-300 bg-white hover:bg-gray-50"
-                  } ${includeMeasurement ? (darkMode ? "bg-blue-900" : "bg-blue-100") : ""}`}
+                      ? "bg-gray-700 text-gray-300 border-gray-600"
+                      : "bg-gray-200 text-gray-700 border-gray-300"
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={includeMeasurement}
-                    onChange={(e) => {
-                      audio.play();
-                      setIncludeMeasurement(e.target.checked);
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span
-                    className={`font-medium text-[1.5rem] ${
-                      darkMode ? "text-gray-200" : "text-gray-900"
-                    }`}
-                  >
+                  <span className="font-medium text-[1.5rem]">
                     Measurement Test
                   </span>
-                </label>
+                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
+                </div>
                 <div
                   className={`flex-1 flex items-center gap-2 px-2 ${
                     darkMode
@@ -809,6 +783,7 @@ const WoodTests = ({ darkMode = false }) => {
                   <span className="font-medium text-[1.5rem]">
                     Strength Test
                   </span>
+                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
                 </div>
               </div>
             </div>
