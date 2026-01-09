@@ -1,1409 +1,462 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Ruler, Download, Trash2, Info, Maximize2, Move, Check, ArrowRight, RotateCcw, Zap, ZapOff } from 'lucide-react';
+import React, { useEffect, useRef, useState } from "react";
+import { Settings2, Save, RefreshCcw } from "lucide-react";
 
-const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, testType = 'flexure', subType = '' }) => {
-  // Debug: Log props on mount and when they change
-  useEffect(() => {
-    console.log('ManualMeasurement props:', { testType, subType });
-  }, [testType, subType]);
-  
-  const requiresLength = testType === 'compressive' || testType === 'shear';
-  
-  // HARDCODED CAMERA SELECTION & CALIBRATION
-  const CAMERA_DEVICE_ID = testType === 'flexure' ? 
-    'UVC Camera (12d1:4321)' :
-    'A4ech FHD 1080P PC Camera (09da:2704)'; 
-  
-  // HARDCODED CALIBRATION VALUES FOR EACH TEST TYPE
-  const CALIBRATION_PRESETS = {
-    flexure: {
-      manualFactor: 0.1568,
-      targetDistance: 210.30,
-      cameraDistance: 210.30,
-      fixedLength: 533.4
-    },
-    compressive: {
-      manualFactor: 0.1288,
-      targetDistance: 196.85,
-      cameraDistance: 196.85
-    },
-    shear: {
-      manualFactor: 0.1288,
-      targetDistance: 196.85,
-      cameraDistance: 196.85
-    }
-  };
-  
-  const [stream, setStream] = useState(null);
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const [capturedImage, setCapturedImage] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [imageDimensions, setImageDimensions] = useState({ width: 1920, height: 1080 });
-  const [widthLine1, setWidthLine1] = useState(200);
-  const [widthLine2, setWidthLine2] = useState(1080);
-  const [heightLine1, setHeightLine1] = useState(100);
-  const [heightLine2, setHeightLine2] = useState(620);
-  const [draggingLine, setDraggingLine] = useState(null);
-  const [cameraDistance, setCameraDistance] = useState(CALIBRATION_PRESETS[testType].cameraDistance);
-  const [calibrationFactor, setCalibrationFactor] = useState(null);
-  const [useManualCalibration, setUseManualCalibration] = useState(true); 
-  const [manualCalibrationFactor, setManualCalibrationFactor] = useState(CALIBRATION_PRESETS[testType].manualFactor);
-  const [targetDistance, setTargetDistance] = useState(CALIBRATION_PRESETS[testType].targetDistance);
-  
-  // Default length set to 6 inches for the dropdown
-  const [lengthInput, setLengthInput] = useState('6');
-  
-  const [finalMeasurement, setFinalMeasurement] = useState(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [measurementHistory, setMeasurementHistory] = useState([]);
-  const [measurementCounter, setMeasurementCounter] = useState(0);
-  const [showHistory, setShowHistory] = useState(false);
-  const [error, setError] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  // Auto-Detect State
-  const [autoDetect, setAutoDetect] = useState(false);
-  const [detectionStatus, setDetectionStatus] = useState('idle');
-  
-  // Virtual keyboard states
-  const [showKeyboard, setShowKeyboard] = useState(false);
-  const [keyboardInput, setKeyboardInput] = useState('');
-  const [activeInputField, setActiveInputField] = useState(null);
-  
+const PY_API = "http://localhost:5000";
+const LARAVEL_API = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
+const DEFAULT_PARAMS = {
+  threshold1: 52,
+  threshold2: 104,
+  min_area: 1000,
+  blur_kernel: 21,
+  dilation: 1,
+  erosion: 1,
+  roi_size: 60,
+  brightness: 0,
+  contrast: 101,
+  mm_per_pixel: 0.1,
+};
+
+export default function Measurement({
+  onPreviousTest,
+  onMainPageReturn,
+  testType = "flexure",
+  subType = "",
+}) {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const captureCanvasRef = useRef(null);
-  // Hidden canvas for gaussian processing
-  const processingCanvasRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  
-  const API_URL = 'http://localhost:5000';
-  const [videoResolution, setVideoResolution] = useState({ width: 1920, height: 1080 });
-  const SENSOR_WIDTH = 4.8;
-  const FOCAL_LENGTH = 4.0;
-  
-  // --- GAUSSIAN SQUARE DETECTION ALGORITHMS ---
-  const convertToGrayscale = (imageData) => {
-    const gray = new Uint8ClampedArray(imageData.width * imageData.height);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      gray[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    }
-    return gray;
+  const snapCanvasRef = useRef(null);
+
+  const [stream, setStream] = useState(null);
+  const [cameraReady, setCameraReady] = useState(false);
+
+  const [params, setParams] = useState(DEFAULT_PARAMS);
+  const [panelOpen, setPanelOpen] = useState(true);
+
+  const [overlayBase64, setOverlayBase64] = useState(null);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  // Request 1920x1080 but scale full-screen using CSS
+  const VIDEO_CONSTRAINTS = {
+    audio: false,
+    video: {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
   };
 
-  const generateGaussianKernel = (size) => {
-    const sigma = size / 6;
-    const kernel = [];
-    const half = Math.floor(size / 2);
-    for (let y = -half; y <= half; y++) {
-      const row = [];
-      for (let x = -half; x <= half; x++) {
-        const value = Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
-        row.push(value);
-      }
-      kernel.push(row);
-    }
-    return kernel;
-  };
-
-  const applyGaussianBlur = (grayData, width, height, kernelSize = 5) => {
-    const output = new Uint8ClampedArray(grayData.length);
-    const kernel = generateGaussianKernel(kernelSize);
-    const half = Math.floor(kernelSize / 2);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0;
-        let weightSum = 0;
-        for (let ky = -half; ky <= half; ky++) {
-          for (let kx = -half; kx <= half; kx++) {
-            const px = Math.min(Math.max(x + kx, 0), width - 1);
-            const py = Math.min(Math.max(y + ky, 0), height - 1);
-            const weight = kernel[ky + half][kx + half];
-            sum += grayData[py * width + px] * weight;
-            weightSum += weight;
-          }
-        }
-        output[y * width + x] = Math.round(sum / weightSum);
-      }
-    }
-    return output;
-  };
-
-  const detectEdges = (grayData, width, height, lowThreshold = 50, highThreshold = 150) => {
-    const edges = new Uint8ClampedArray(grayData.length);
-    const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
-    const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let gx = 0, gy = 0;
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const pixel = grayData[(y + ky) * width + (x + kx)];
-            gx += pixel * sobelX[ky + 1][kx + 1];
-            gy += pixel * sobelY[ky + 1][kx + 1];
-          }
-        }
-        const magnitude = Math.sqrt(gx * gx + gy * gy);
-        if (magnitude > highThreshold) edges[y * width + x] = 255;
-        else if (magnitude > lowThreshold) edges[y * width + x] = 128;
-      }
-    }
-    return edges;
-  };
-
-  const traceContour = (edges, width, height, startX, startY, visited) => {
-    const contour = [];
-    const stack = [{ x: startX, y: startY }];
-    while (stack.length > 0 && contour.length < 10000) {
-      const { x, y } = stack.pop();
-      const idx = y * width + x;
-      if (visited.has(idx) || x < 0 || x >= width || y < 0 || y >= height || edges[idx] === 0) continue;
-      visited.add(idx);
-      contour.push({ x, y });
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx !== 0 || dy !== 0) stack.push({ x: x + dx, y: y + dy });
-        }
-      }
-    }
-    return contour;
-  };
-
-  const calculatePerimeter = (contour) => {
-    let perimeter = 0;
-    for (let i = 0; i < contour.length; i++) {
-      const p1 = contour[i];
-      const p2 = contour[(i + 1) % contour.length];
-      perimeter += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-    }
-    return perimeter;
-  };
-
-  const perpendicularDistance = (point, lineStart, lineEnd) => {
-    const dx = lineEnd.x - lineStart.x;
-    const dy = lineEnd.y - lineStart.y;
-    if (dx === 0 && dy === 0) return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy);
-    if (t < 0) return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
-    else if (t > 1) return Math.sqrt((point.x - lineEnd.x) ** 2 + (point.y - lineEnd.y) ** 2);
-    const projX = lineStart.x + t * dx;
-    const projY = lineStart.y + t * dy;
-    return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
-  };
-
-  const douglasPeucker = (points, tolerance) => {
-    if (points.length < 3) return points;
-    let maxDistance = 0;
-    let maxIndex = 0;
-    const first = points[0];
-    const last = points[points.length - 1];
-    for (let i = 1; i < points.length - 1; i++) {
-      const distance = perpendicularDistance(points[i], first, last);
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        maxIndex = i;
-      }
-    }
-    if (maxDistance > tolerance) {
-      const left = douglasPeucker(points.slice(0, maxIndex + 1), tolerance);
-      const right = douglasPeucker(points.slice(maxIndex), tolerance);
-      return left.slice(0, -1).concat(right);
-    } else {
-      return [first, last];
-    }
-  };
-
-  const approximatePolygon = (contour, epsilon) => {
-    if (contour.length < 3) return contour;
-    const perimeter = calculatePerimeter(contour);
-    const tolerance = epsilon * perimeter;
-    return douglasPeucker(contour, tolerance);
-  };
-
-  const getMinBoundingRect = (contour) => {
-    if (contour.length === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    contour.forEach(point => {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-    return [
-      { x: minX, y: minY },
-      { x: maxX, y: minY },
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY }
-    ];
-  };
-
-  const sortCorners = (corners) => {
-    corners.sort((a, b) => a.y - b.y);
-    const top = corners.slice(0, 2).sort((a, b) => a.x - b.x);
-    const bottom = corners.slice(2, 4).sort((a, b) => a.x - b.x);
-    return [top[0], top[1], bottom[1], bottom[0]];
-  };
-
-  const findSquareCorners = (edges, width, height) => {
-    const visited = new Set();
-    let largestContour = [];
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = y * width + x;
-        if (edges[idx] > 0 && !visited.has(idx)) {
-          const contour = traceContour(edges, width, height, x, y, visited);
-          if (contour.length > largestContour.length) largestContour = contour;
-        }
-      }
-    }
-    if (largestContour.length < 100) return null;
-    const approx = approximatePolygon(largestContour, 0.02);
-    if (approx.length === 4) return sortCorners(approx);
-    else if (approx.length > 4) return getMinBoundingRect(largestContour);
-    return null;
-  };
-  // --- END IMAGE PROCESSING ---
-
-  // Start camera on mount and update calibration when test type changes
-  useEffect(() => {
-    // Update calibration values when test type changes
-    const preset = CALIBRATION_PRESETS[testType];
-    setCameraDistance(preset.cameraDistance);
-    setManualCalibrationFactor(preset.manualFactor);
-    setTargetDistance(preset.targetDistance);
-    
-    startCamera();
-    return () => {
-      stopCamera();
-    };
-  }, [testType]);
-  
-  useEffect(() => {
-    if (useManualCalibration) {
-      setCalibrationFactor(manualCalibrationFactor);
-    } else {
-      const pixelSizeMM = (SENSOR_WIDTH * cameraDistance) / (FOCAL_LENGTH * videoResolution.width);
-      setCalibrationFactor(pixelSizeMM);
-    }
-  }, [cameraDistance, videoResolution.width, useManualCalibration, manualCalibrationFactor]);
-
-  // AUTO-DETECT LOOP
-  useEffect(() => {
-    const processFrame = () => {
-      if (!isCameraActive || !autoDetect || !videoRef.current || !processingCanvasRef.current) {
-        if (autoDetect && isCameraActive) {
-          animationFrameRef.current = requestAnimationFrame(processFrame);
-        }
-        return;
-      }
-
-      const video = videoRef.current;
-      const canvas = processingCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      
-      if (video.videoWidth === 0) return;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      ctx.drawImage(video, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      try {
-        const grayData = convertToGrayscale(imageData);
-        const blurredData = applyGaussianBlur(grayData, canvas.width, canvas.height);
-        const edges = detectEdges(blurredData, canvas.width, canvas.height);
-        const corners = findSquareCorners(edges, canvas.width, canvas.height);
-        
-        if (corners && corners.length === 4) {
-          const P1 = corners[0];
-          const P2 = corners[1];
-          const P3 = corners[2];
-          const P4 = corners[3];
-          
-          const newW1 = (P1.x + P4.x) / 2;
-          const newW2 = (P2.x + P3.x) / 2;
-          const newH1 = (P1.y + P2.y) / 2;
-          const newH2 = (P3.y + P4.y) / 2;
-          
-          setWidthLine1(newW1);
-          setWidthLine2(newW2);
-          setHeightLine1(newH1);
-          setHeightLine2(newH2);
-          
-          setDetectionStatus('detected');
-        } else {
-          setDetectionStatus('searching');
-        }
-      } catch (err) {
-        console.error('Detection error', err);
-        setDetectionStatus('error');
-      }
-      
-      animationFrameRef.current = requestAnimationFrame(processFrame);
-    };
-    
-    if (autoDetect && isCameraActive) {
-      animationFrameRef.current = requestAnimationFrame(processFrame);
-    } else {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      setDetectionStatus('idle');
-    }
-    
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [autoDetect, isCameraActive]);
-  
   const startCamera = async () => {
+    setErr(null);
     try {
-      setError(null);
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      
-      console.log('Available cameras:', videoDevices.map(d => ({ label: d.label, id: d.deviceId })));
-      
-      const targetCamera = videoDevices.find(device => 
-        device.label.includes(CAMERA_DEVICE_ID)
-      );
-      
-      let constraints;
-      if (targetCamera) {
-        console.log(`Using camera: ${targetCamera.label}`);
-        constraints = {
-          video: {
-            deviceId: { exact: targetCamera.deviceId },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          }
-        };
-      } else {
-        console.warn(`Camera "${CAMERA_DEVICE_ID}" not found, using default`);
-        constraints = {
-          video: {
-            facingMode: testType === 'flexure' ? 'user' : 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          }
-        };
-      }
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(mediaStream);
-      setIsCameraActive(true);
-
+      const s = await navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS);
+      setStream(s);
       if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        videoRef.current.onloadedmetadata = () => {
-          const actualWidth = videoRef.current.videoWidth;
-          const actualHeight = videoRef.current.videoHeight;
-          setVideoResolution({ width: actualWidth, height: actualHeight });
-          
-          // Only reset lines if not in auto-detect mode
-          if (!autoDetect) {
-            setWidthLine1(Math.floor(actualWidth * 0.15));
-            setWidthLine2(Math.floor(actualWidth * 0.85));
-            setHeightLine1(Math.floor(actualHeight * 0.15));
-            setHeightLine2(Math.floor(actualHeight * 0.85));
-          }
-          
-          videoRef.current.play().catch(err => {
-            console.error('Error playing video:', err);
-            setError(`Failed to play video: ${err.message}`);
-          });
-        };
+        videoRef.current.srcObject = s;
       }
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      setError(`Failed to access camera: ${err.message}`);
-      setIsCameraActive(false);
+    } catch (e) {
+      setErr(e?.message || "Failed to start camera");
     }
   };
 
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-    setIsCameraActive(false);
-    setAutoDetect(false);
+    try {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    } catch {}
+    setStream(null);
+    setCameraReady(false);
   };
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !captureCanvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = captureCanvasRef.current;
-    const context = canvas.getContext('2d');
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.95);
-    
-    canvas.toBlob((blob) => {
-      setImageFile(new File([blob], 'capture.jpg', { type: 'image/jpeg' }));
-    }, 'image/jpeg', 0.95);
-
-    setImageDimensions({ width: canvas.width, height: canvas.height });
-    
-    setCapturedImage(imageData);
-    setAutoDetect(false); // Stop auto detect when capturing
-    stopCamera();
-  };
-
-  const retakePhoto = async () => {
-    setCapturedImage(null);
-    setImageFile(null);
-    setError(null);
-    setFinalMeasurement(null);
-    setCurrentStep(1);
-    await startCamera();
-  };
-  
-  const widthPixels = Math.abs(widthLine2 - widthLine1);
-  const heightPixels = Math.abs(heightLine2 - heightLine1);
-  const widthMM = widthPixels * (calibrationFactor || 0);
-  const heightMM = heightPixels * (calibrationFactor || 0);
-  
-  // Calculate area based on test type and subtype
-  const calculateArea = () => {
-    if (testType === 'compressive' && subType === 'Perpendicular') {
-      const lengthMM = parseFloat(lengthInput) * 25.4;
-      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) return 0;
-      return lengthMM * widthMM;
-    } else if (testType === 'shear') {
-      const lengthMM = parseFloat(lengthInput) * 25.4;
-      if (!lengthInput || isNaN(lengthMM) || lengthMM <= 0) return 0;
-      const baseArea = widthMM * lengthMM;
-      if (subType === 'Double') return baseArea * 2;
-      else return baseArea;
-    } else if (testType === 'flexure') {
-      return widthMM * heightMM;
-    } else if (testType === 'compressive' && subType === 'Parallel') {
-      return widthMM * heightMM;
-    }
-    return widthMM * heightMM;
-  };
-  
-  const areaMM2 = calculateArea();
-  const areaIN2 = areaMM2 / 645.16;
-  const displayAreaMM2 = isNaN(areaMM2) || !isFinite(areaMM2) ? 0 : areaMM2;
-  const displayAreaIN2 = isNaN(areaIN2) || !isFinite(areaIN2) ? 0 : areaIN2;
-  
-  const handleInputFocus = (fieldName) => {
-    setActiveInputField(fieldName);
-    if (fieldName === 'cameraDistance') {
-      setKeyboardInput(cameraDistance.toString());
-    } else if (fieldName === 'targetDistance') {
-      setKeyboardInput(targetDistance.toString());
-    } else if (fieldName === 'manualCalibrationFactor') {
-      setKeyboardInput(manualCalibrationFactor.toString());
-    }
-    setShowKeyboard(true);
-  };
-  
-  const handleKeyboardInput = (value) => {
-    setKeyboardInput(value);
-  };
-  
-  const handleKeyboardClose = () => {
-    if (activeInputField === 'cameraDistance') {
-      const val = parseFloat(keyboardInput);
-      setCameraDistance(isNaN(val) ? CALIBRATION_PRESETS[testType].cameraDistance : val);
-    } else if (activeInputField === 'targetDistance') {
-      const val = parseFloat(keyboardInput);
-      setTargetDistance(isNaN(val) ? CALIBRATION_PRESETS[testType].targetDistance : val);
-    } else if (activeInputField === 'manualCalibrationFactor') {
-      const val = parseFloat(keyboardInput);
-      setManualCalibrationFactor(isNaN(val) ? CALIBRATION_PRESETS[testType].manualFactor : val);
-    }
-    
-    setShowKeyboard(false);
-    setActiveInputField(null);
-    setKeyboardInput('');
-  };
-  
-  const drawLines = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !capturedImage) return;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = imageDimensions.width;
-      canvas.height = imageDimensions.height;
-      ctx.drawImage(img, 0, 0, imageDimensions.width, imageDimensions.height);
-      
-      // Draw red lines (width)
-      ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(widthLine1, 0); ctx.lineTo(widthLine1, imageDimensions.height); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(widthLine2, 0); ctx.lineTo(widthLine2, imageDimensions.height); ctx.stroke();
-      
-      ctx.fillStyle = 'rgba(255, 0, 0, 1)';
-      ctx.beginPath(); ctx.arc(widthLine1, imageDimensions.height / 2, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(widthLine2, imageDimensions.height / 2, 10, 0, Math.PI * 2); ctx.fill();
-      
-      // Draw green lines (height)
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(0, heightLine1); ctx.lineTo(imageDimensions.width, heightLine1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, heightLine2); ctx.lineTo(imageDimensions.width, heightLine2); ctx.stroke();
-      
-      ctx.fillStyle = 'rgba(0, 255, 0, 1)';
-      ctx.beginPath(); ctx.arc(imageDimensions.width / 2, heightLine1, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(imageDimensions.width / 2, heightLine2, 10, 0, Math.PI * 2); ctx.fill();
-      
-      // Labels
-      const widthLabelY = 30;
-      const widthLabelX = (widthLine1 + widthLine2) / 2;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(widthLabelX - 80, widthLabelY - 20, 160, 30);
-      ctx.fillStyle = 'rgba(255, 0, 0, 1)';
-      ctx.font = 'bold 16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Width: ${widthMM.toFixed(2)} mm`, widthLabelX, widthLabelY);
-      
-      const heightLabelX = imageDimensions.width - 100;
-      const heightLabelY = (heightLine1 + heightLine2) / 2;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(heightLabelX - 80, heightLabelY - 15, 160, 30);
-      ctx.fillStyle = 'rgba(0, 255, 0, 1)';
-      ctx.font = 'bold 16px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Height: ${heightMM.toFixed(2)} mm`, heightLabelX, heightLabelY);
-    };
-    img.src = capturedImage;
-  };
-  
   useEffect(() => {
-    drawLines();
-  }, [capturedImage, widthLine1, widthLine2, heightLine1, heightLine2, widthMM, heightMM]);
-  
-  const handleMouseDownOnVideo = (e) => {
-    if (!videoRef.current || autoDetect) return;
-    const video = videoRef.current;
-    const rect = video.getBoundingClientRect();
-    const scaleX = videoResolution.width / rect.width;
-    const scaleY = videoResolution.height / rect.height;
-    const x = Math.round((e.clientX - rect.left) * scaleX);
-    const y = Math.round((e.clientY - rect.top) * scaleY);
-    const threshold = 40;
-    if (Math.abs(x - widthLine1) < threshold) setDraggingLine('widthLine1');
-    else if (Math.abs(x - widthLine2) < threshold) setDraggingLine('widthLine2');
-    else if (Math.abs(y - heightLine1) < threshold) setDraggingLine('heightLine1');
-    else if (Math.abs(y - heightLine2) < threshold) setDraggingLine('heightLine2');
-  };
-  
-  const handleMouseMoveOnVideo = (e) => {
-    if (!draggingLine || !videoRef.current || autoDetect) return;
-    const video = videoRef.current;
-    const rect = video.getBoundingClientRect();
-    const scaleX = videoResolution.width / rect.width;
-    const scaleY = videoResolution.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    if (draggingLine === 'widthLine1') setWidthLine1(Math.max(0, Math.min(x, videoResolution.width)));
-    else if (draggingLine === 'widthLine2') setWidthLine2(Math.max(0, Math.min(x, videoResolution.width)));
-    else if (draggingLine === 'heightLine1') setHeightLine1(Math.max(0, Math.min(y, videoResolution.height)));
-    else if (draggingLine === 'heightLine2') setHeightLine2(Math.max(0, Math.min(y, videoResolution.height)));
-  };
-  
-  const handleMouseDown = (e) => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const threshold = 40;
-    if (Math.abs(x - widthLine1) < threshold) setDraggingLine('widthLine1');
-    else if (Math.abs(x - widthLine2) < threshold) setDraggingLine('widthLine2');
-    else if (Math.abs(y - heightLine1) < threshold) setDraggingLine('heightLine1');
-    else if (Math.abs(y - heightLine2) < threshold) setDraggingLine('heightLine2');
-  };
-  
-  const handleMouseMove = (e) => {
-    if (!draggingLine || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = imageDimensions.width / rect.width;
-    const scaleY = imageDimensions.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    if (draggingLine === 'widthLine1') setWidthLine1(Math.max(0, Math.min(x, imageDimensions.width)));
-    else if (draggingLine === 'widthLine2') setWidthLine2(Math.max(0, Math.min(x, imageDimensions.width)));
-    else if (draggingLine === 'heightLine1') setHeightLine1(Math.max(0, Math.min(y, imageDimensions.height)));
-    else if (draggingLine === 'heightLine2') setHeightLine2(Math.max(0, Math.min(y, imageDimensions.height)));
-  };
-  
-  const handleMouseUp = () => {
-    setDraggingLine(null);
-  };
-  
-  const performMeasurement = async () => {
-    if (!videoRef.current || !captureCanvasRef.current) {
-      setError('Camera not ready');
-      return;
+    startCamera();
+    loadActiveSettings(); // load from Laravel on mount
+    return () => stopCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadActiveSettings = async () => {
+    try {
+      const res = await fetch(`${LARAVEL_API}/api/measurement-settings/active`);
+      if (!res.ok) return; // don’t hard-fail if endpoint not added yet
+      const data = await res.json();
+      // Expect data like: { ...fields... }
+      const merged = { ...DEFAULT_PARAMS, ...data };
+      // Ensure blur kernel odd
+      if (merged.blur_kernel % 2 === 0) merged.blur_kernel += 1;
+      setParams(merged);
+    } catch {
+      // silently ignore until your Laravel endpoint exists
     }
-    
-    // Auto capture if not yet captured
-    if (!capturedImage) {
-      capturePhoto();
-    }
-    
-    let lengthMM;
-    if (testType === 'flexure') {
-      lengthMM = CALIBRATION_PRESETS.flexure.fixedLength;
-    } else if (requiresLength) {
-      if (!lengthInput || parseFloat(lengthInput) <= 0) {
-        setError('Please select valid length');
-        return;
+  };
+
+  const saveSettings = async () => {
+    setErr(null);
+    try {
+      const res = await fetch(`${LARAVEL_API}/api/measurement-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || "Failed to save settings");
       }
-      lengthMM = parseFloat(lengthInput) * 25.4;
+    } catch (e) {
+      setErr(e?.message || "Failed to save settings");
     }
-    
-    setIsProcessing(true);
-    setError(null);
+  };
+
+  const snapAndMeasure = async () => {
+    setBusy(true);
+    setErr(null);
+    setOverlayBase64(null);
+    setResult(null);
     
     try {
-      const formData = new FormData();
-      if(imageFile) formData.append('image', imageFile);
-      formData.append('widthLine1', Math.round(widthLine1));
-      formData.append('widthLine2', Math.round(widthLine2));
-      formData.append('heightLine1', Math.round(heightLine1));
-      formData.append('heightLine2', Math.round(heightLine2));
-      formData.append('cameraDistance', cameraDistance);
-      
-      // Calculate locally (simulated API response) to ensure UI works standalone
-      const data = {
-         success: true,
-         widthPixels: widthPixels,
-         heightPixels: heightPixels,
-         widthMM: widthMM,
-         heightMM: heightMM,
-         widthInches: (widthMM / 25.4).toFixed(3),
-         heightInches: (heightMM / 25.4).toFixed(3),
-         calibrationFactor: calibrationFactor
-      };
-      
+      const video = videoRef.current;
+      const canvas = snapCanvasRef.current;
+      if (!video || !canvas || !cameraReady) throw new Error("Camera not ready");
+
+      // draw current frame at actual video size
+      const w = video.videoWidth || 1920;
+      const h = video.videoHeight || 1080;
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+      if (!blob) throw new Error("Failed to capture frame");
+
+      const form = new FormData();
+      form.append("image", blob, "snapshot.jpg");
+      form.append("params", JSON.stringify(params));
+
+      const res = await fetch(`${PY_API}/shape-detect/measure`, {
+        method: "POST",
+        body: form,
+      });
+
+      const data = await res.json();
       if (!data.success) {
-        setError(data.error || 'Measurement failed');
-        setIsProcessing(false);
-        return;
+        setOverlayBase64(data.overlayBase64 || null);
+        throw new Error(data.error || "Detection failed");
       }
-      
-      const newMeasurement = {
-        id: measurementCounter + 1,
-        timestamp: new Date(),
-        testType: testType,
-        cameraUsed: CAMERA_DEVICE_ID,
-        widthPixels: data.widthPixels,
-        heightPixels: data.heightPixels,
-        width: data.widthMM,
-        height: data.heightMM,
-        areaMM2: areaMM2,
-        areaIN2: areaIN2,
-        widthInches: data.widthInches,
-        heightInches: data.heightInches,
-        calibrationFactor: data.calibrationFactor,
-        cameraDistance: cameraDistance,
-      };
-      
-      if (testType === 'flexure' || requiresLength) {
-        newMeasurement.length = lengthMM;
-        newMeasurement.lengthInches = (lengthMM / 25.4).toFixed(3);
-        newMeasurement.volume = data.widthMM * data.heightMM * lengthMM;
-        newMeasurement.volumeInches = newMeasurement.volume / 16387.064;
-      }
-      
-      setFinalMeasurement(newMeasurement);
-      setMeasurementHistory(prev => [...prev, newMeasurement]);
-      setMeasurementCounter(prev => prev + 1);
-      setCurrentStep(2); // Show results view
-      setIsProcessing(false);
-      stopCamera();
-      
-      // --- FIX FOR NAVIGATION ISSUE ---
-      // We comment this out so it doesn't trigger a page change in the parent component.
-      // This allows the user to see the Step 2 (Results) view inside this file.
-      /*
-      if (typeof onTestComplete === 'function') {
-        onTestComplete(newMeasurement);
-      }
-      */
-      
-    } catch (err) {
-      setError('Failed: ' + err.message);
-      setIsProcessing(false);
+
+      setOverlayBase64(data.overlayBase64 || null);
+      setResult(data.best || null);
+    } catch (e) {
+      setErr(e?.message || "Failed to measure");
+    } finally {
+      setBusy(false);
     }
   };
-  
-  const exportMeasurements = () => {
-    if (measurementHistory.length === 0) return;
-    const headers = requiresLength 
-      ? ['ID','Time','Type','Camera','W(mm)','H(mm)','Area(mm²)','Area(in²)','L(mm)','Vol(mm³)','Vol(in³)']
-      : ['ID','Time','Type','Camera','W(mm)','H(mm)','Area(mm²)','Area(in²)'];
-    const rows = measurementHistory.map(m => {
-      const base = [m.id, m.timestamp.toISOString(), m.testType, m.cameraUsed, m.width.toFixed(2), m.height.toFixed(2), m.areaMM2.toFixed(2), m.areaIN2.toFixed(3)];
-      if ((testType === 'flexure' || requiresLength) && m.length) {
-        return [...base, m.length.toFixed(2), m.volume.toFixed(2), m.volumeInches.toFixed(3)];
-      }
-      return base;
-    });
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `measurements_${testType}_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+  const retake = () => {
+    setErr(null);
+    setOverlayBase64(null);
+    setResult(null);
   };
   
-  const startNewMeasurement = () => {
-    setCurrentStep(1);
-    setCapturedImage(null);
-    setImageFile(null);
-    // Keep length input selection
-    setFinalMeasurement(null);
-    setError(null);
-    startCamera();
-  };
-  
-  const getAreaDescription = () => {
-    if (testType === 'flexure') return 'Area = W × H (L fixed at 21")';
-    else if (testType === 'compressive') {
-      if (subType === 'Perpendicular') return 'Area = L × W (Perpendicular to Grain)';
-      return 'Area = W × H (Parallel to Grain)';
-    } else if (testType === 'shear') {
-      if (subType === 'Double') return 'Area = (W × L) × 2 (Double Shear)';
-      return 'Area = W × L (Single Shear)';
-    }
-    return 'Area = W × H';
-  };
-  
+
+  const Slider = ({ label, k, min, max, step = 1 }) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#e5e7eb" }}>
+        <span>{label}</span>
+        <span style={{ color: "#a78bfa", fontWeight: 700 }}>{String(params[k])}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={params[k]}
+        onChange={(e) => {
+          let v = Number(e.target.value);
+          if (k === "blur_kernel") {
+            v = Math.max(1, v);
+            if (v % 2 === 0) v += 1; // keep odd
+          }
+          setParams((p) => ({ ...p, [k]: v }));
+        }}
+        style={{ width: "100%" }}
+      />
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900">
-      {/* Hidden processing canvas for Gaussian detection */}
-      <canvas ref={processingCanvasRef} className="hidden" />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "#000",
+        minWidth: 800,
+        minHeight: 480,
+        overflow: "hidden",
+      }}
+    >
+      {/* hidden capture canvas */}
+      <canvas ref={snapCanvasRef} style={{ display: "none" }} />
 
-      <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
-        <button type="button" onClick={onPreviousTest} className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 hover:text-blue-400 transition-colors">←</button>
-        <span className="ml-4 text-gray-100 text-lg font-semibold">TimberMach | Manual Lines ({testType.charAt(0).toUpperCase() + testType.slice(1)})</span>
-        
-        <div className="ml-4 flex items-center gap-2 bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg px-3 py-1">
-          <Camera className="w-4 h-4 text-blue-400" />
-          <span className="text-blue-400 text-sm font-semibold">{CAMERA_DEVICE_ID}</span>
-          <span className="text-xs text-green-400 ml-2">
-            {testType === 'flexure' ? '✓ Calibrated' : '⚠ Needs Calibration'}
-          </span>
-        </div>
-        
-        <button type="button" onClick={onMainPageReturn} className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 ml-auto hover:text-red-500 transition-colors">✕</button>
-      </div>
-      
-      <div className="mt-12 flex-grow overflow-auto p-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-center gap-4">
-              <div className={`flex items-center gap-2 ${currentStep === 1 ? 'text-blue-400' : 'text-green-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 1 ? 'bg-blue-600' : 'bg-green-600'}`}>{currentStep > 1 ? <Check className="w-5 h-5" /> : '1'}</div>
-                <span className="font-semibold">Capture & Measure</span>
-              </div>
-              <ArrowRight className="text-gray-500" />
-              <div className={`flex items-center gap-2 ${currentStep === 2 ? 'text-blue-400' : 'text-gray-500'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 2 ? 'bg-blue-600' : 'bg-gray-700'}`}>2</div>
-                <span className="font-semibold">Results</span>
-              </div>
-            </div>
-          </div>
-          
-          {currentStep === 1 && (
-            <>
-              <div className="bg-gray-800 rounded-lg p-4 mb-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      <Ruler className="w-4 h-4 inline mr-2" />
-                      Calibration Mode
-                    </label>
-                    <select
-                      value={useManualCalibration ? 'manual' : 'auto'}
-                      onChange={(e) => setUseManualCalibration(e.target.value === 'manual')}
-                      className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="manual">Manual (Direct Factor)</option>
-                      <option value="auto">Auto (Camera Distance)</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      <Ruler className="w-4 h-4 inline mr-2" />
-                      Current Distance (mm)
-                    </label>
-                    <input 
-                      type="text" 
-                      value={cameraDistance || ''} 
-                      onFocus={() => handleInputFocus('cameraDistance')}
-                      readOnly
-                      className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
-                    />
-                    <div className="text-xs text-gray-400 mt-1">
-                      Actual camera position
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Target Distance (mm)
-                    </label>
-                    <input 
-                      type="text" 
-                      value={targetDistance || ''} 
-                      onFocus={() => handleInputFocus('targetDistance')}
-                      readOnly
-                      className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
-                    />
-                    <div className={`text-xs mt-1 ${testType === 'flexure' ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {testType === 'flexure' ? '✓ Calibrated: 210mm' : `Required: ${CALIBRATION_PRESETS[testType].targetDistance}mm`}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Calibration Factor
-                    </label>
-                    {useManualCalibration ? (
-                      <input 
-                        type="text" 
-                        value={manualCalibrationFactor || ''} 
-                        onFocus={() => handleInputFocus('manualCalibrationFactor')}
-                        readOnly
-                        className={`w-full px-3 py-2 text-white rounded-lg border focus:outline-none focus:border-blue-500 cursor-pointer ${
-                          testType === 'flexure' ? 'bg-green-900 border-green-700' : 'bg-yellow-900 border-yellow-700'
-                        }`}
-                      />
-                    ) : (
-                      <div className="text-white text-sm bg-gray-700 px-3 py-2 rounded-lg">
-                        {calibrationFactor ? calibrationFactor.toFixed(6) : '0.000000'}
-                      </div>
-                    )}
-                    <div className={`text-xs mt-1 ${testType === 'flexure' ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {useManualCalibration ? (testType === 'flexure' ? '✓ Calibrated' : '⚠ Update value') : 'mm/pixel (auto)'}
-                    </div>
-                  </div>
-                  
-                  {requiresLength && testType !== 'flexure' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        <Ruler className="w-4 h-4 inline mr-2" />
-                        Length (in)
-                      </label>
-                      {/* CHANGED: Textbox replaced with Dropdown */}
-                      <select
-                        value={lengthInput}
-                        onChange={(e) => setLengthInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 text-white rounded-lg border border-gray-600 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="6">6 inches</option>
-                        <option value="9">9 inches</option>
-                      </select>
-                    </div>
-                  )}
-                  
-                  {testType === 'flexure' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        <Ruler className="w-4 h-4 inline mr-2" />
-                        Length (FIXED)
-                      </label>
-                      <div className="w-full px-3 py-2 bg-green-900 text-green-200 rounded-lg border border-green-700">
-                        21.00" (533.4mm)
-                      </div>
-                      <div className="text-xs text-green-400 mt-1">
-                        ✓ Standard flexure length
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Area Calculation Info */}
-                <div className={`mb-4 p-3 rounded-lg border ${
-                  (testType === 'compressive' && subType === 'Perpendicular') || testType === 'shear'
-                    ? (!lengthInput || parseFloat(lengthInput) <= 0)
-                      ? 'bg-yellow-900 bg-opacity-30 border-yellow-700'
-                      : 'bg-purple-900 bg-opacity-30 border-purple-700'
-                    : 'bg-purple-900 bg-opacity-30 border-purple-700'
-                }`}>
-                  <div className={`text-sm font-semibold flex items-center gap-2 ${
-                    (testType === 'compressive' && subType === 'Perpendicular') || testType === 'shear'
-                      ? (!lengthInput || parseFloat(lengthInput) <= 0)
-                        ? 'text-yellow-400'
-                        : 'text-purple-400'
-                      : 'text-purple-400'
-                  }`}>
-                    <Info className="w-4 h-4" />
-                    {getAreaDescription()}
-                  </div>
-                </div>
+      {/* Fullscreen video */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        onLoadedMetadata={() => setCameraReady(true)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+        }}
+      />
 
-                {/* Auto-Detect Toggle Button */}
-                {isCameraActive && (
-                  <button 
-                    type="button" 
-                    onClick={() => setAutoDetect(!autoDetect)}
-                    className={`w-full mb-3 px-6 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
-                      autoDetect 
-                        ? 'bg-purple-600 text-white hover:bg-purple-700' 
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {autoDetect ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-                    {autoDetect ? 'Auto-Detect ON (Gaussian)' : 'Enable Gaussian Auto-Detect'}
-                  </button>
-                )}
-                
-                <button type="button" onClick={performMeasurement} disabled={!isCameraActive || isProcessing} className={`w-full px-6 py-3 rounded-lg font-semibold transition-colors ${!isCameraActive || isProcessing ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                  {isProcessing ? 'Processing...' : 'Capture & Measure'}
-                </button>
-              </div>
-              
-              {error && (
-                <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4">
-                  <strong>Error:</strong> {error}
-                </div>
-              )}
-              
-              <div className="bg-gray-800 rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-white font-semibold flex items-center">
-                    <Camera className="w-4 h-4 mr-2" />
-                    {capturedImage ? 'Captured Image' : 'Camera View'}
-                  </h3>
-
-                  {/* Detection Status Indicator */}
-                  {isCameraActive && autoDetect && (
-                    <div className={`px-3 py-1 rounded text-xs font-bold ${
-                      detectionStatus === 'detected' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'
-                    }`}>
-                      {detectionStatus === 'detected' ? '✓ Square Detected' : 'Scanning...'}
-                    </div>
-                  )}
-
-                  {capturedImage && (
-                    <button 
-                      type="button" 
-                      onClick={retakePhoto} 
-                      className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 flex items-center"
-                    >
-                      <RotateCcw className="w-3 h-3 mr-1" />Retake
-                    </button>
-                  )}
-                </div>
-                
-                {/* Camera View with Live Measurement Lines */}
-                {isCameraActive && (
-                  <div 
-                    className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center"
-                    style={{
-                      aspectRatio: `${videoResolution.width} / ${videoResolution.height}`,
-                      maxHeight: '600px',
-                      width: '100%'
-                    }}
-                    onMouseDown={handleMouseDownOnVideo}
-                    onMouseMove={handleMouseMoveOnVideo}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                  >
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="rounded-lg"
-                      style={{ 
-                        maxHeight: '600px',
-                        width: 'auto',
-                        maxWidth: '100%',
-                        objectFit: 'contain',
-                        aspectRatio: `${videoResolution.width} / ${videoResolution.height}`,
-                        margin: '0 auto',
-                        display: 'block'
-                      }}
-                    />
-                    
-                    {/* SVG Overlay for measurement lines */}
-                    <svg 
-                      className={`absolute inset-0 ${autoDetect ? 'pointer-events-none' : ''}`}
-                      style={{ 
-                        width: '100%', 
-                        height: '100%',
-                        objectFit: 'contain'
-                      }}
-                      viewBox={`0 0 ${videoResolution.width} ${videoResolution.height}`}
-                      preserveAspectRatio="xMidYMid meet"
-                    >
-                      {/* Red vertical lines (width) */}
-                      <line 
-                        x1={`${(widthLine1 / videoResolution.width) * 100}%`}
-                        y1="0" 
-                        x2={`${(widthLine1 / videoResolution.width) * 100}%`}
-                        y2="100%" 
-                        stroke="rgba(255, 0, 0, 0.8)" 
-                        strokeWidth="3"
-                      />
-                      <line 
-                        x1={`${(widthLine2 / videoResolution.width) * 100}%`}
-                        y1="0" 
-                        x2={`${(widthLine2 / videoResolution.width) * 100}%`}
-                        y2="100%" 
-                        stroke="rgba(255, 0, 0, 0.8)" 
-                        strokeWidth="3"
-                      />
-                      
-                      {/* Handles (hidden in autoDetect) */}
-                      {!autoDetect && (
-                        <>
-                          <circle cx={`${(widthLine1 / videoResolution.width) * 100}%`} cy="50%" r="10" fill="rgba(255, 0, 0, 1)"/>
-                          <circle cx={`${(widthLine2 / videoResolution.width) * 100}%`} cy="50%" r="10" fill="rgba(255, 0, 0, 1)"/>
-                        </>
-                      )}
-                      
-                      {/* Green horizontal lines (height) */}
-                      <line 
-                        x1="0" 
-                        y1={`${(heightLine1 / videoResolution.height) * 100}%`}
-                        x2="100%" 
-                        y2={`${(heightLine1 / videoResolution.height) * 100}%`}
-                        stroke="rgba(0, 255, 0, 0.8)" 
-                        strokeWidth="3"
-                      />
-                      <line 
-                        x1="0" 
-                        y1={`${(heightLine2 / videoResolution.height) * 100}%`}
-                        x2="100%" 
-                        y2={`${(heightLine2 / videoResolution.height) * 100}%`}
-                        stroke="rgba(0, 255, 0, 0.8)" 
-                        strokeWidth="3"
-                      />
-                      
-                      {!autoDetect && (
-                        <>
-                          <circle cx="50%" cy={`${(heightLine1 / videoResolution.height) * 100}%`} r="10" fill="rgba(0, 255, 0, 1)"/>
-                          <circle cx="50%" cy={`${(heightLine2 / videoResolution.height) * 100}%`} r="10" fill="rgba(0, 255, 0, 1)"/>
-                        </>
-                      )}
-                    </svg>
-                    
-                    <div className="absolute bottom-2 left-2 right-2 space-y-1 pointer-events-none">
-                      {/* Distance Warning */}
-                      <div className={`text-center py-2 rounded-lg font-bold text-sm ${
-                        Math.abs(cameraDistance - targetDistance) > 10 
-                          ? 'bg-red-900 bg-opacity-90 text-red-200 border border-red-500' 
-                          : 'bg-green-900 bg-opacity-90 text-green-200 border border-green-500'
-                      }`}>
-                        {Math.abs(cameraDistance - targetDistance) > 10 ? (
-                          <>⚠️ Camera Distance: {cameraDistance}mm (Target: {targetDistance}mm) - Adjust Position!</>
-                        ) : (
-                          <>✓ Camera Distance: {cameraDistance}mm - Perfect!</>
-                        )}
-                      </div>
-                      
-                      {/* Measurements */}
-                      <div className="bg-black bg-opacity-80 rounded-lg p-2">
-                        <div className="grid grid-cols-4 gap-2 text-xs">
-                          <div className="text-center">
-                            <div className="text-red-400 font-semibold">Width</div>
-                            <div className="text-white">{widthMM.toFixed(1)} mm</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-green-400 font-semibold">Height</div>
-                            <div className="text-white">{heightMM.toFixed(1)} mm</div>
-                          </div>
-                          {(requiresLength || testType === 'flexure') && (
-                            <div className="text-center">
-                              <div className="text-blue-400 font-semibold">Length</div>
-                              <div className="text-white">
-                                {testType === 'flexure' ? '21.00"' : (lengthInput || '—')+"\""}
-                              </div>
-                            </div>
-                          )}
-                          <div className="text-center">
-                            <div className="text-purple-400 font-semibold">{getAreaDescription()}</div>
-                            <div className="text-white">{displayAreaMM2.toFixed(0)} mm²</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Captured Image with Lines */}
-                {capturedImage && (
-                  <>
-                    <canvas
-                      ref={canvasRef}
-                      onMouseDown={handleMouseDown}
-                      onMouseMove={handleMouseMove}
-                      onMouseUp={handleMouseUp}
-                      onMouseLeave={handleMouseUp}
-                      className="w-full h-auto rounded-lg cursor-crosshair border-2 border-gray-600"
-                      style={{ maxHeight: '600px' }}
-                    />
-                    
-                    <div className="grid grid-cols-2 gap-4 mt-4">
-                      <div className="bg-red-900 bg-opacity-30 border border-red-700 rounded-lg p-3">
-                        <div className="text-red-400 text-sm font-semibold mb-1 flex items-center">
-                          <Move className="w-4 h-4 mr-2" />Red Lines — Width
-                        </div>
-                        <div className="text-white text-xl font-bold">
-                          {widthMM.toFixed(2)} mm
-                        </div>
-                        <div className="text-gray-300 text-sm">{(widthMM / 25.4).toFixed(3)}"</div>
-                        <div className="text-xs text-gray-400 mt-1">{widthPixels.toFixed(0)} pixels</div>
-                      </div>
-                      
-                      <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-3">
-                        <div className="text-green-400 text-sm font-semibold mb-1 flex items-center">
-                          <Move className="w-4 h-4 mr-2" />Green Lines — Height
-                        </div>
-                        <div className="text-white text-xl font-bold">
-                          {heightMM.toFixed(2)} mm
-                        </div>
-                        <div className="text-gray-300 text-sm">{(heightMM / 25.4).toFixed(3)}"</div>
-                        <div className="text-xs text-gray-400 mt-1">{heightPixels.toFixed(0)} pixels</div>
-                      </div>
-                      
-                      <div className="bg-purple-900 bg-opacity-30 border border-purple-700 rounded-lg p-3 col-span-2">
-                        <div className="text-purple-400 text-sm font-semibold mb-1 flex items-center">
-                          <Maximize2 className="w-4 h-4 mr-2" />
-                          {getAreaDescription()}
-                        </div>
-                        <div className="text-white text-2xl font-bold">{displayAreaMM2.toFixed(2)} mm²</div>
-                        <div className="text-gray-300 text-lg">{displayAreaIN2.toFixed(3)} in²</div>
-                      </div>
-                    </div>
-                  </>
-                )}
-                
-                <canvas ref={captureCanvasRef} className="hidden" />
-              </div>
-            </>
-          )}
-          
-          {currentStep === 2 && finalMeasurement && (
-            <>
-              <div className="bg-gray-800 rounded-lg p-6 mb-4">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-white text-2xl font-bold flex items-center">
-                    <Check className="w-6 h-6 mr-2 text-green-400" />
-                    Measurement Complete
-                    <span className="ml-3 px-3 py-1 bg-blue-600 text-white text-sm rounded-full">#{finalMeasurement.id}</span>
-                  </h3>
-                  <div className="flex gap-3">
-                    <button 
-                      type="button" 
-                      onClick={startNewMeasurement} 
-                      className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 border border-gray-600"
-                    >
-                      Retake
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => onTestComplete(finalMeasurement)} // This triggers the transition
-                      className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 flex items-center"
-                    >
-                      Proceed to Strength Test <ArrowRight className="ml-2 w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-4">
-                  <div className="text-blue-400 text-sm">
-                    <Camera className="w-4 h-4 inline mr-2" />
-                    Captured with: <strong>{finalMeasurement.cameraUsed}</strong>
-                  </div>
-                </div>
-                
-                <div className={`grid grid-cols-1 md:grid-cols-2 ${(requiresLength || testType === 'flexure') ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
-                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Width</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.width.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.widthInches}"</div></div>
-                  <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Height</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.height.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.heightInches}"</div></div>
-                  <div className="bg-purple-900 bg-opacity-50 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1 flex items-center"><Maximize2 className="w-3 h-3 mr-1" />Area</div><div className="text-purple-400 text-2xl font-bold">{finalMeasurement.areaMM2.toFixed(2)} mm²</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.areaIN2.toFixed(3)} in²</div></div>
-                  {(requiresLength || testType === 'flexure') && finalMeasurement.length && (
-                    <>
-                      <div className="bg-gray-700 rounded-lg p-4"><div className="text-gray-400 text-sm mb-1">Length</div><div className="text-green-400 text-2xl font-bold">{finalMeasurement.length.toFixed(2)} mm</div><div className="text-gray-300 text-base mt-1">{finalMeasurement.lengthInches}"</div></div>
-                      <div className="bg-blue-900 bg-opacity-50 rounded-lg p-4 md:col-span-2 lg:col-span-4"><div className="text-gray-400 text-sm mb-1">Volume</div><div className="text-blue-400 text-3xl font-bold">{finalMeasurement.volume.toFixed(2)} mm³</div><div className="text-gray-300 text-xl mt-1">{finalMeasurement.volumeInches.toFixed(3)} in³</div></div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-          
-          {measurementHistory.length > 0 && (
-            <div className="bg-gray-800 rounded-lg p-4 mt-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white font-semibold">Measurement History ({measurementCounter})</h3>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowHistory(!showHistory)} className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">{showHistory ? 'Hide' : 'Show'}</button>
-                  <button type="button" onClick={exportMeasurements} className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 flex items-center"><Download className="w-4 h-4 mr-1" />CSV</button>
-                  <button type="button" onClick={() => {setMeasurementHistory([]); setMeasurementCounter(0);}} className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 flex items-center"><Trash2 className="w-4 h-4 mr-1" />Clear</button>
-                </div>
-              </div>
-              {showHistory && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-700">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-gray-300">#</th>
-                        <th className="px-3 py-2 text-left text-gray-300">Time</th>
-                        <th className="px-3 py-2 text-left text-gray-300">Camera</th>
-                        <th className="px-3 py-2 text-left text-gray-300">W×H (mm)</th>
-                        <th className="px-3 py-2 text-left text-gray-300">Area (mm²)</th>
-                        {(requiresLength || testType === 'flexure') && <th className="px-3 py-2 text-left text-gray-300">Vol (in³)</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {measurementHistory.slice().reverse().map(m => (
-                        <tr key={m.id} className="hover:bg-gray-700">
-                          <td className="px-3 py-2 text-white">{m.id}</td>
-                          <td className="px-3 py-2 text-gray-400">{m.timestamp.toLocaleTimeString()}</td>
-                          <td className="px-3 py-2 text-blue-400 text-xs">{m.cameraUsed}</td>
-                          <td className="px-3 py-2 text-green-400 font-semibold">{m.width.toFixed(1)}×{m.height.toFixed(1)}</td>
-                          <td className="px-3 py-2 text-purple-400 font-semibold">{m.areaMM2.toFixed(2)}</td>
-                          {m.volumeInches !== undefined && <td className="px-3 py-2 text-blue-400 font-semibold">{m.volumeInches.toFixed(3)}</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Virtual Keyboard */}
-      {showKeyboard && (
-        <VirtualKeyboard
-          initialValue={keyboardInput}
-          onKeyPress={handleKeyboardInput}
-          onClose={handleKeyboardClose}
-          darkMode={true}
+      {/* Overlay image from backend (optional) */}
+      {overlayBase64 && (
+        <img
+          alt="overlay"
+          src={`data:image/png;base64,${overlayBase64}`}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            pointerEvents: "none",
+          }}
         />
       )}
-    </div>
-  );
-};
 
-// Simple Virtual Keyboard Component
-const VirtualKeyboard = ({ initialValue = '', onKeyPress, onClose, darkMode = false }) => {
-  const [input, setInput] = useState(initialValue);
-
-  const keys = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['.', '0', '⌫']
-  ];
-
-  const handleKeyPress = (key) => {
-    let newInput = input;
-    
-    if (key === '⌫') {
-      newInput = input.slice(0, -1);
-    } else if (key === '.') {
-      if (!input.includes('.')) {
-        newInput = input + key;
-      }
-    } else {
-      newInput = input + key;
-    }
-    
-    setInput(newInput);
-    if (onKeyPress) {
-      onKeyPress(newInput);
-    }
-  };
-
-  const handleClear = () => {
-    setInput('');
-    if (onKeyPress) {
-      onKeyPress('');
-    }
-  };
-
-  const handleDone = () => {
-    if (onClose) {
-      onClose(input);
-    }
-  };
-
-  return (
-    <div className={`fixed bottom-0 left-0 right-0 z-50 ${
-      darkMode ? 'bg-gray-800 border-t-2 border-gray-700' : 'bg-gray-100 border-t-2 border-gray-300'
-    }`}>
-      {/* Input Display */}
-      <div className={`px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
-        <div className={`text-2xl font-mono text-center ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-          {input || <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>0</span>}
-        </div>
+      {/* Top-left controls (back/close) */}
+      <div style={{ position: "absolute", top: 12, left: 12, display: "flex", gap: 8, zIndex: 30 }}>
+        <button
+          onClick={onPreviousTest}
+          style={{
+            background: "rgba(0,0,0,0.55)",
+            color: "white",
+            border: "1px solid rgba(255,255,255,0.15)",
+            padding: "8px 10px",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
+        >
+          ←
+        </button>
+        <button
+          onClick={onMainPageReturn}
+          style={{
+            background: "rgba(0,0,0,0.55)",
+            color: "white",
+            border: "1px solid rgba(255,255,255,0.15)",
+            padding: "8px 10px",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
+        >
+          ✕
+        </button>
       </div>
 
-      {/* Keyboard Keys */}
-      <div className="p-4">
-        {keys.map((row, rowIdx) => (
-          <div key={rowIdx} className="flex gap-2 mb-2">
-            {row.map((key) => (
-              <button
-                key={key}
-                onClick={() => handleKeyPress(key)}
-                className={`flex-1 py-4 text-xl font-semibold rounded-lg transition-colors ${
-                  darkMode
-                    ? 'bg-gray-700 text-gray-100 hover:bg-gray-600 active:bg-gray-500'
-                    : 'bg-white text-gray-900 hover:bg-gray-200 active:bg-gray-300 border border-gray-300'
-                }`}
-              >
-                {key}
-              </button>
-            ))}
+      {/* Mid-right SNAP + RETAKE buttons */}
+        <div
+          style={{
+            position: "absolute",
+            right: 18,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 40,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          {/* SNAP */}
+          <button
+            onClick={snapAndMeasure}
+            disabled={!cameraReady || busy}
+            title="Snap"
+            style={{
+              width: 76,
+              height: 76,
+              borderRadius: 999,
+              border: "3px solid rgba(255,255,255,0.85)",
+              background: busy ? "rgba(16,185,129,0.35)" : "rgba(16,185,129,0.85)",
+              color: "#001b10",
+              fontWeight: 900,
+              letterSpacing: 1,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
+            {busy ? "..." : "SNAP"}
+          </button>
+
+          {/* RETAKE */}
+          <button
+            onClick={retake}
+            disabled={busy || (!overlayBase64 && !result && !err)}
+            title="Retake"
+            style={{
+              width: 76,
+              height: 34,
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.25)",
+              background: "rgba(0,0,0,0.55)",
+              color: "white",
+              fontWeight: 800,
+              letterSpacing: 0.5,
+              cursor: busy || (!overlayBase64 && !result && !err) ? "not-allowed" : "pointer",
+              opacity: busy || (!overlayBase64 && !result && !err) ? 0.45 : 1,
+            }}
+          >
+            RETAKE
+          </button>
+        </div>
+
+
+      {/* Parameter panel */}
+      <div
+        style={{
+          position: "absolute",
+          left: 12,
+          bottom: 12,
+          width: panelOpen ? 340 : 54,
+          background: "rgba(17,24,39,0.78)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 14,
+          padding: panelOpen ? 12 : 8,
+          zIndex: 50,
+          backdropFilter: "blur(6px)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: panelOpen ? 10 : 0 }}>
+          <button
+            onClick={() => setPanelOpen((v) => !v)}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: "rgba(0,0,0,0.25)",
+              color: "white",
+              cursor: "pointer",
+            }}
+            title="Parameters"
+          >
+            <Settings2 size={18} style={{ margin: "0 auto" }} />
+          </button>
+
+          {panelOpen && (
+            <>
+              <div style={{ color: "#e5e7eb", fontWeight: 800 }}>
+                Shape Detect Params
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>
+                  {testType}{subType ? ` • ${subType}` : ""}
+                </div>
+              </div>
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <button
+                  onClick={loadActiveSettings}
+                  title="Reload from Laravel"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  <RefreshCcw size={18} />
+                </button>
+
+                <button
+                  onClick={saveSettings}
+                  title="Save to Laravel"
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Save size={18} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {panelOpen && (
+          <div style={{ maxHeight: 240, overflow: "auto", paddingRight: 6 }}>
+            <Slider label="Threshold1" k="threshold1" min={0} max={255} />
+            <Slider label="Threshold2" k="threshold2" min={0} max={255} />
+            <Slider label="Min Area" k="min_area" min={0} max={10000} />
+            <Slider label="Blur Kernel (odd)" k="blur_kernel" min={1} max={51} />
+            <Slider label="Dilation" k="dilation" min={0} max={10} />
+            <Slider label="Erosion" k="erosion" min={0} max={10} />
+            <Slider label="ROI Size (%)" k="roi_size" min={10} max={100} />
+            <Slider label="Brightness" k="brightness" min={-100} max={100} />
+            <Slider label="Contrast" k="contrast" min={0} max={200} />
+            <Slider label="mm_per_pixel" k="mm_per_pixel" min={0.001} max={1.0} step={0.001} />
           </div>
-        ))}
+        )}
+      </div>
 
-        {/* Bottom Row - Special buttons */}
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={handleClear}
-            className={`flex-1 py-4 text-lg font-semibold rounded-lg transition-colors ${
-              darkMode
-                ? 'bg-red-700 text-white hover:bg-red-600 active:bg-red-500'
-                : 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 border border-red-600'
-            }`}
-          >
-            Clear
-          </button>
-          <button
-            onClick={handleDone}
-            className={`flex-1 py-4 text-lg font-semibold rounded-lg transition-colors ${
-              darkMode
-                ? 'bg-green-700 text-white hover:bg-green-600 active:bg-green-500'
-                : 'bg-green-500 text-white hover:bg-green-600 active:bg-green-700 border border-green-600'
-            }`}
-          >
-            ✓ Done
-          </button>
-        </div>
+      {/* Result readout */}
+      <div
+        style={{
+          position: "absolute",
+          right: 12,
+          bottom: 12,
+          width: 320,
+          background: "rgba(0,0,0,0.55)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 14,
+          padding: 12,
+          color: "white",
+          zIndex: 60,
+        }}
+      >
+        {err && (
+          <div style={{ color: "#fca5a5", fontWeight: 800, marginBottom: 8 }}>
+            Error: <span style={{ fontWeight: 600 }}>{err}</span>
+          </div>
+        )}
+
+        {!result ? (
+          <div style={{ color: "#d1d5db", fontWeight: 700 }}>
+            {busy ? "Measuring..." : "Press SNAP to measure"}
+          </div>
+        ) : (
+          <>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Measurement</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>Width</div>
+                <div style={{ fontSize: 20, fontWeight: 900 }}>{result.width_mm.toFixed(1)} mm</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>Height</div>
+                <div style={{ fontSize: 20, fontWeight: 900 }}>{result.height_mm.toFixed(1)} mm</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, color: "#9ca3af" }}>
+              bbox: [{result.bbox.join(", ")}] • angle: {result.angle.toFixed(1)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
-};
-
-export default ManualMeasurement;
+}
