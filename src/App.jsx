@@ -168,7 +168,7 @@ function App() {
   return (
     <GlobalKeyboardProvider darkMode={darkMode}>
       <div
-        className={`font-sans relative ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}
+        className={` relative ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}
         style={{ width: "100vw", height: "100vh" }}
       >
         {/* Sidebar Overlay */}

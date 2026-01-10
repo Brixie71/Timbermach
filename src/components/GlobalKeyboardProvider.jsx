@@ -1,107 +1,101 @@
 // GlobalKeyboardProvider.jsx - Wraps your entire app and manages keyboard globally
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import VirtualKeyboard from './VirtualKeyboard';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import VirtualKeyboard from "./VirtualKeyboard";
 
-// Create context for keyboard state
 const KeyboardContext = createContext();
 
-// Custom hook to use keyboard from any component
 export const useKeyboard = () => {
   const context = useContext(KeyboardContext);
-  if (!context) {
-    throw new Error('useKeyboard must be used within GlobalKeyboardProvider');
-  }
+  if (!context) throw new Error("useKeyboard must be used within GlobalKeyboardProvider");
   return context;
 };
+
+function getKeyboardModeForTarget(target) {
+  const forced = target.getAttribute("data-keyboard-mode");
+  if (forced === "numeric" || forced === "text") return forced;
+
+  const inputMode = (target.getAttribute("inputmode") || "").toLowerCase();
+  const type = (target.getAttribute("type") || "").toLowerCase();
+
+  if (
+    inputMode === "decimal" ||
+    inputMode === "numeric" ||
+    type === "number" ||
+    target.classList.contains("keyboard-numeric")
+  ) {
+    return "numeric";
+  }
+  return "text";
+}
 
 export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [currentInput, setCurrentInput] = useState(null);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
+  const [keyboardMode, setKeyboardMode] = useState("text");
 
   useEffect(() => {
-    // Global click handler to detect input focus
     const handleFocusIn = (e) => {
       const target = e.target;
-      
-      // Check if focused element is an input or has data-keyboard attribute
-      if (
-        (target.tagName === 'INPUT' && target.type === 'text') ||
-        (target.tagName === 'INPUT' && target.type === 'search') ||
-        target.hasAttribute('data-keyboard') ||
-        target.classList.contains('keyboard-trigger')
-      ) {
-        // Prevent system keyboard on touch devices
-        if ('ontouchstart' in window) {
-          target.readOnly = true;
-        }
-        
-        setCurrentInput(target);
-        setInputValue(target.value || '');
-        setIsKeyboardVisible(true);
-        
-        // Prevent default keyboard on mobile
-        e.preventDefault();
-      }
+
+      const isKeyboardTarget =
+        (target?.tagName === "INPUT" && (target.type === "text" || target.type === "search")) ||
+        target?.hasAttribute?.("data-keyboard") ||
+        target?.classList?.contains?.("keyboard-trigger");
+
+      if (!isKeyboardTarget) return;
+
+      // ✅ DO NOT set readOnly. It breaks controlled inputs in React.
+      // ✅ Also do NOT preventDefault here; let focus happen normally.
+
+      setCurrentInput(target);
+      setInputValue(target.value || "");
+      setKeyboardMode(getKeyboardModeForTarget(target));
+      setIsKeyboardVisible(true);
     };
 
-    // Listen for focus events globally
-    document.addEventListener('focusin', handleFocusIn, true);
-
-    return () => {
-      document.removeEventListener('focusin', handleFocusIn, true);
-    };
+    document.addEventListener("focusin", handleFocusIn, true);
+    return () => document.removeEventListener("focusin", handleFocusIn, true);
   }, []);
 
-  const handleKeyPress = (value) => {
-    setInputValue(value);
-    
-    // Update the actual input element
-    if (currentInput) {
-      // Get the React internal instance
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        'value'
-      ).set;
-      
-      // Set the value using native setter
-      nativeInputValueSetter.call(currentInput, value);
-      
-      // Trigger both input and change events for React
-      const inputEvent = new Event('input', { bubbles: true });
-      const changeEvent = new Event('change', { bubbles: true });
-      
-      currentInput.dispatchEvent(inputEvent);
-      currentInput.dispatchEvent(changeEvent);
+  const syncValueToInput = (value) => {
+    if (!currentInput) return;
+
+    // Set DOM value using the native setter (so React can detect it)
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+
+    setter?.call(currentInput, value);
+
+    // ✅ Fire a REAL input event (React-friendly)
+    let evt;
+    try {
+      evt = new InputEvent("input", { bubbles: true });
+    } catch {
+      evt = document.createEvent("Event");
+      evt.initEvent("input", true, true);
     }
+    currentInput.dispatchEvent(evt);
+  };
+
+  const handleKeyPress = (fullValue) => {
+    // VirtualKeyboard sends the FULL string
+    setInputValue(fullValue);
+    syncValueToInput(fullValue);
   };
 
   const handleClose = (finalValue) => {
     if (currentInput) {
-      // Get the React internal instance
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        'value'
-      ).set;
-      
-      // Set the value using native setter
-      nativeInputValueSetter.call(currentInput, finalValue);
-      
-      // Trigger both input and change events for React
-      const inputEvent = new Event('input', { bubbles: true });
-      const changeEvent = new Event('change', { bubbles: true });
-      
-      currentInput.dispatchEvent(inputEvent);
-      currentInput.dispatchEvent(changeEvent);
-      
-      // Blur the input
+      syncValueToInput(finalValue);
       currentInput.blur();
     }
-    
     setIsKeyboardVisible(false);
     setCurrentInput(null);
-    setInputValue('');
+    setInputValue("");
+    setKeyboardMode("text");
   };
 
   return (
@@ -113,12 +107,12 @@ export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
       }}
     >
       {children}
-      
-      {/* Global Keyboard */}
+
       {isKeyboardVisible && (
         <VirtualKeyboard
           darkMode={darkMode}
           initialValue={inputValue}
+          mode={keyboardMode}
           onKeyPress={handleKeyPress}
           onClose={handleClose}
         />

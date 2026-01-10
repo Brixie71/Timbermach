@@ -37,6 +37,7 @@ DEFAULT_PARAMS = {
     "brightness": 0,       # -100..100
     "contrast": 101,       # 0..200
     "mm_per_pixel": 0.1,   # calibration
+    "edge_thickness": 2,
 }
 
 
@@ -49,6 +50,30 @@ def run_shape_detect(
     bgr_image: np.ndarray,
     params: Dict[str, Any]
 ) -> Dict[str, Any]:
+    
+    denoise_enabled = bool(params.get("denoise_enabled", True))
+    h = int(params.get("denoise_h", 6))
+    template = int(params.get("denoise_template", 7))
+    search = int(params.get("denoise_search", 21))
+
+    # Ensure odd sizes
+    if template % 2 == 0:
+        template += 1
+    if search % 2 == 0:
+        search += 1
+
+    if denoise_enabled:
+        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.fastNlMeansDenoising(
+            gray,
+            None,
+            h,
+            template,
+            search
+        )
+    else:
+        gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+
     """
     Run contour pipeline once and return best contour measurement + overlay image.
     """
@@ -69,6 +94,7 @@ def run_shape_detect(
     p["brightness"] = int(p["brightness"])
     p["contrast"] = int(p["contrast"])
     p["mm_per_pixel"] = float(p["mm_per_pixel"])
+    p["edge_thickness"] = int(p.get("edge_thickness", 2))
 
     pipe = ContourDetectionPipeline()
     results = pipe.process_frame(bgr_image, p)

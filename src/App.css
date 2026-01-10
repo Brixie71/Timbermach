@@ -3,11 +3,26 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'HovesPro';
-  src: url('/resources/fonts/tt_hoves_pro/TT Hoves Pro Trial Condensed Regular.ttf') format('truetype');
+  font-family: "HovesPro";
+  src: url("/resources/fonts/tt_hoves_pro/TT Hoves Pro Trial Condensed Regular.ttf")
+    format("truetype");
+  font-style: normal;
+  font-weight: 400;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: "HovesPro", system-ui, -apple-system, Segoe UI, Roboto, Arial,
+    sans-serif;
+  margin: 0;
+}
+
+/* Hide scrollbars (you already had this) */
 ::-webkit-scrollbar {
   display: none;
 }
-

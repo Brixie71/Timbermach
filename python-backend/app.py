@@ -4,7 +4,6 @@ from flasgger import Swagger
 
 import cv2
 import numpy as np
-import pytesseract
 from PIL import Image
 import base64
 import json
@@ -12,8 +11,6 @@ import requests
 
 # Shape-detect wrapper (loads shape-detect.py via importlib)
 from shape_detect_api import run_shape_detect
-
-from auto_detection_utils import WoodAutoDetector, visualize_detection
 
 # Seven-segment OCR
 from seven_segment_ocr import SevenSegmentOCR, create_default_segment_boxes
@@ -68,14 +65,6 @@ swagger_template = {
 }
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
-
-# Tesseract configuration
-TESSERACT_PATH = "C:/Program Files/Tesseract-OCR/tesseract.exe"
-try:
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-    print(f"✓ Tesseract path set: {TESSERACT_PATH}")
-except Exception as e:
-    print(f"✗ Tesseract error: {e}")
 
 # Seven-segment OCR instance
 seven_segment_ocr = SevenSegmentOCR()
@@ -225,45 +214,6 @@ def shape_detect_measure():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ============================================================================
-# OCR ENDPOINT
-# ============================================================================
-@app.route("/scan-number", methods=["POST"])
-def scan_number():
-    """
-    Scan and recognize a number using OCR
-    ---
-    tags:
-      - OCR
-    consumes:
-      - multipart/form-data
-    parameters:
-      - name: image
-        in: formData
-        type: file
-        required: true
-    responses:
-      200:
-        description: OCR successful
-    """
-    if "image" not in request.files:
-        return jsonify({"error": "No image file", "success": False}), 400
-
-    try:
-        image = Image.open(request.files["image"].stream)
-        config = r"--psm 8 -c tessedit_char_whitelist=0123456789"
-        text = pytesseract.image_to_string(image, config=config).strip()
-
-        if not text:
-            return jsonify({"error": "No text recognized", "success": False}), 400
-
-        return jsonify({"recognized_number": text, "success": True})
-
-    except Exception as e:
-        return jsonify({"error": str(e), "success": False}), 500
-
 
 # ============================================================================
 # CALIBRATION HELPER
@@ -530,83 +480,6 @@ def visualize_seven_segment():
         traceback.print_exc()
         return jsonify({"error": str(e), "success": False}), 500
 
-
-# ============================================================================
-# AUTO-DETECTION ENDPOINT (still kept, but no manual utils needed)
-# ============================================================================
-@app.route("/auto-measure/detect-and-align", methods=["POST"])
-def auto_detect_wood():
-    """
-    Automatically detect wood specimen and return aligned measurement lines
-    Uses GrabCut → Color Segmentation → Contour Detection pipeline
-    ---
-    tags:
-      - Auto Detection
-    consumes:
-      - multipart/form-data
-    """
-    try:
-        if "image" not in request.files:
-            return jsonify({"error": "No image file", "success": False}), 400
-
-        image_bytes = request.files["image"].read()
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            return jsonify({"error": "Failed to decode image", "success": False}), 400
-
-        calibration_factor = float(request.form.get("calibrationFactor", 0.1432))
-        camera_distance = float(request.form.get("cameraDistance", 210))
-        auto_init = request.form.get("autoInit", "true").lower() == "true"
-        grabcut_iterations = int(request.form.get("grabcutIterations", 5))
-        return_debug = request.form.get("returnDebugImages", "false").lower() == "true"
-
-        detector = WoodAutoDetector()
-        detection_result = detector.detect(img, auto_init=auto_init, grabcut_iterations=grabcut_iterations)
-
-        if not detection_result.get("success"):
-            return jsonify(detection_result), 400
-
-        # Compute mm without manual utils
-        mm = _calc_mm_from_lines(
-            detection_result["widthLine1"],
-            detection_result["widthLine2"],
-            detection_result["heightLine1"],
-            detection_result["heightLine2"],
-            calibration_factor,
-        )
-
-        response = {
-            "success": True,
-            "autoAligned": detection_result.get("autoAligned"),
-            "confidence": detection_result.get("confidence"),
-            "widthLine1": detection_result["widthLine1"],
-            "widthLine2": detection_result["widthLine2"],
-            "heightLine1": detection_result["heightLine1"],
-            "heightLine2": detection_result["heightLine2"],
-            "centerX": detection_result.get("centerX"),
-            "centerY": detection_result.get("centerY"),
-            "angle": detection_result.get("angle"),
-            "aspectRatio": detection_result.get("aspectRatio"),
-            "isSquare": detection_result.get("isSquare"),
-            "cameraDistance": camera_distance,
-            "imageWidth": img.shape[1],
-            "imageHeight": img.shape[0],
-            "measurements": mm,
-        }
-
-        if return_debug and "detectionData" in detection_result:
-            response["debugImages"] = visualize_detection(img, detection_result["detectionData"])
-
-        return jsonify(response)
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e), "success": False}), 500
-
-
 # ============================================================================
 # GET CALIBRATION
 # ============================================================================
@@ -630,27 +503,6 @@ def get_seven_segment_calibration():
 
     except Exception as e:
         return jsonify({"error": str(e), "success": False}), 500
-
-
-# ============================================================================
-# HEALTH CHECK
-# ============================================================================
-@app.route("/health", methods=["GET"])
-def health_check():
-    """
-    Server health check
-    ---
-    tags:
-      - Health
-    """
-    return jsonify({
-        "status": "healthy",
-        "opencv_version": cv2.__version__,
-        "tesseract_available": pytesseract.pytesseract.tesseract_cmd is not None,
-        "seven_segment_calibrated": seven_segment_ocr.calibration is not None,
-        "laravel_url": LARAVEL_API_URL,
-    })
-
 
 # ============================================================================
 # ACTUATOR CALIBRATION ENDPOINTS (Laravel Proxy)
@@ -775,7 +627,6 @@ if __name__ == "__main__":
     print("TimberMach Measurement Server")
     print("=" * 60)
     print(f"OpenCV: {cv2.__version__}")
-    print(f"Tesseract: {TESSERACT_PATH}")
     print(f"Laravel: {LARAVEL_API_URL}")
     print("Server: http://localhost:5000")
     print("Swagger: http://localhost:5000/apidocs")

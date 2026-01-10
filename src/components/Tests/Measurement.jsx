@@ -15,6 +15,10 @@ const DEFAULT_PARAMS = {
   brightness: 0,
   contrast: 101,
   mm_per_pixel: 0.1,
+  denoise_enabled: true,
+  denoise_h: 6,          // 3–10 good range
+  denoise_template: 7,   // odd
+  denoise_search: 21,    // odd
 };
 
 export default function Measurement({
@@ -398,6 +402,13 @@ export default function Measurement({
 
         {panelOpen && (
           <div style={{ maxHeight: 240, overflow: "auto", paddingRight: 6 }}>
+            <Slider
+              label="Edge Thickness"
+              k="edge_thickness"
+              min={1}
+              max={7}
+              step={1}
+            />
             <Slider label="Threshold1" k="threshold1" min={0} max={255} />
             <Slider label="Threshold2" k="threshold2" min={0} max={255} />
             <Slider label="Min Area" k="min_area" min={0} max={10000} />

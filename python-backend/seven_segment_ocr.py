@@ -11,18 +11,24 @@ import cv2
 import numpy as np
 
 # Seven-segment binary mapping (A-B-C-D-E-F-G order)
+# Seven-segment binary mapping (A-B-C-D-E-F-G order)
 SEGMENT_MAP = {
-    "1111110": "0",  # All except G
-    "0110000": "1",  # B and C only
+    "0000000": "",      # blank / off (important for unused digits)
+    "1111110": "0",
+    "0110000": "1",
     "1101101": "2",
     "1111001": "3",
     "0110011": "4",
     "1011011": "5",
     "1011111": "6",
     "1110000": "7",
-    "1111111": "8",  # All segments
+    "1111111": "8",
     "1111011": "9",
+
+    # Letters (common 7-seg approximations)
+    "0001110": "L",     # D+E+F on  -> "L"
 }
+
 
 
 class SevenSegmentOCR:
@@ -64,19 +70,22 @@ class SevenSegmentOCR:
 
     def format_number_with_decimal(self, full_number: str) -> str:
         """Insert decimal point at the specified position"""
-        if not self.has_decimal_point or "?" in full_number:
+        if not self.has_decimal_point:
+            return full_number
+        if not full_number or "?" in full_number:
+            return full_number
+
+        # NEW: don't insert decimal for alphanumeric strings like "L0" / "Lo"
+        if not full_number.isdigit():
             return full_number
 
         if len(full_number) < self.decimal_position:
             return full_number
 
-        # Insert decimal from right
-        # decimal_position=1 means XX.X (insert before last digit)
-        # decimal_position=2 means X.XX (insert before last 2 digits)
         insert_pos = len(full_number) - self.decimal_position
-
         formatted = full_number[:insert_pos] + "." + full_number[insert_pos:]
         return formatted
+
 
     def load_calibration(self, calibration_json: str) -> bool:
         """Load calibration from JSON string"""
@@ -436,23 +445,44 @@ class SevenSegmentOCR:
                     {"digit_index": digit_idx, "segments": segment_debug}
                 )
 
-        # Combine digits into full number
-        full_number = "".join([r["recognized_digit"] for r in results])
+        # Combine digits into full number (keep blanks as "")
+        chars = [r["recognized_digit"] for r in results]
 
-        # Format with decimal point if configured
-        formatted_number = self.format_number_with_decimal(full_number)
+        # NEW: strip leading/trailing blanks (so unused digits don't become "??" or weird)
+        while chars and chars[0] == "":
+            chars.pop(0)
+        while chars and chars[-1] == "":
+            chars.pop()
+
+        raw_number = "".join(chars)
+
+        # ✅ NEW: if it starts with L, treat it as "Lo" even if other char is unknown
+        # examples: "L?", "L0", "Lo", "L" -> "Lo"
+        if raw_number and raw_number[0] == "L":
+            display_text = "Lo"
+        else:
+            display_text = raw_number
+
+        # NEW: special case for moisture meter "Lo"
+        # Many meters show "Lo" but the second character looks like "0"
+        # So OCR likely sees "L0"
+        display_text = raw_number
+        if raw_number in ("L0", "L00", "L000", "L"):
+            display_text = "Lo"
+
+        # Format decimals ONLY if numeric
+        formatted_number = self.format_number_with_decimal(display_text)
+
 
         response = {
             "success": True,
             "full_number": formatted_number,
-            "raw_number": full_number,
-            "has_decimal": self.has_decimal_point,
-            "decimal_position": self.decimal_position
-            if self.has_decimal_point
-            else None,
+            "raw_number": raw_number,
+            "mode": "LOW" if display_text == "Lo" else "NUMERIC",
+            "is_valid": "?" not in raw_number,  # keep this for debugging
             "digits": results,
-            "is_valid": "?" not in full_number,
         }
+
 
         if debug:
             response["debug_info"] = {

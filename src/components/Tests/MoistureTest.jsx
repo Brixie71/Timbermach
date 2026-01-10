@@ -1,428 +1,548 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Upload, RotateCcw, X, ArrowLeft, Home } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * MoistureTest.jsx (FIXED for WoodTests.jsx flow)
+ *
+ * WoodTests.jsx passes:
+ * - onTestComplete(data)
+ * - onPreviousTest()
+ * - onMainPageReturn()
+ * - specimenName
+ *
+ * This file:
+ * - keeps the centered meter UI
+ * - adds Back/Home, Retake, Proceed
+ * - Proceed now WORKS (calls onTestComplete)
+ * - Back/Home cancels test and returns to menu (onMainPageReturn)
+ */
 
 const MoistureTest = ({
   onTestComplete = () => {},
   onPreviousTest = () => {},
   onMainPageReturn = () => {},
+  specimenName = "",
 }) => {
   const FLASK_API = "http://localhost:5000";
   const LARAVEL_API =
     import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
-  const [uploadedImage, setUploadedImage] = useState(null);
+  // ✅ HARD-CODE CAMERA NAME (substring match)
+  const TARGET_CAMERA_NAME = "HX-USB Camera (0c45:64ab)";
+
+  // ✅ OCR interval + target samples
+  const OCR_INTERVAL_MS = 500;
+  const TARGET_SAMPLES = 20;
+
+  // ✅ Stability + jitter tolerance
+  const STABLE_WINDOW = 6;
+  const STABLE_TOL = 1.0; // stable if range within this
+  const COLLECT_TOL = 1.0; // while collecting, allowed deviation from locked center
+
+  // ✅ Layout offset so controls won’t go under Header.jsx
+  // If your header is taller, increase this (e.g., 72 or 80).
+  const HEADER_OFFSET_PX = 64;
+
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const timerRef = useRef(null);
+  const inFlightRef = useRef(false);
+
+  const [calibrationInfo, setCalibrationInfo] = useState({
+    hasDecimalPoint: true,
+    decimalPosition: 1,
+  });
+
   const [recognitionResult, setRecognitionResult] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
-  const [calibrationInfo, setCalibrationInfo] = useState(null);
-  const [testCompleted, setTestCompleted] = useState(false);
 
-  const fileInputRef = useRef(null);
+  // phases
+  const [phase, setPhase] = useState("LOCKING"); // LOCKING | COLLECTING | DONE
+  const phaseRef = useRef("LOCKING");
 
-  // Load active calibration on mount
+  // stability window (recent readings)
+  const stableWindowRef = useRef([]); // floats
+
+  // collecting
+  const samplesRef = useRef([]); // floats
+  const [sampleCount, setSampleCount] = useState(0);
+
+  // lock center for collecting tolerance (median of stability window)
+  const lockedCenterRef = useRef(null);
+
+  const [finalReading, setFinalReading] = useState(null);
+  const doneRef = useRef(false);
+
+  // ---------------- helpers ----------------
+  const lowReadingAsZero = () => {
+    const dp = calibrationInfo?.decimalPosition ?? 1;
+    if (dp === 1) return "00.0";
+    if (dp === 2) return "00.00";
+    return "0";
+  };
+
+  const formatNumberWithDecimal = (rawNumber, hasDecimal, decimalPos) => {
+    if (!hasDecimal || !rawNumber) return rawNumber;
+    if (!/^\d+$/.test(rawNumber)) return rawNumber;
+    if (rawNumber.length < decimalPos) return rawNumber;
+    const insertPos = rawNumber.length - decimalPos;
+    return rawNumber.slice(0, insertPos) + "." + rawNumber.slice(insertPos);
+  };
+
+  const parseReadingToFloat = (s) => {
+    if (!s) return null;
+    const v = Number(String(s).replace("%", "").trim());
+    return Number.isFinite(v) ? v : null;
+  };
+
+  const median = (arr) => {
+    if (!arr.length) return null;
+    const a = [...arr].sort((x, y) => x - y);
+    const mid = Math.floor(a.length / 2);
+    return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+  };
+
+  const range = (arr) => {
+    if (!arr.length) return Infinity;
+    let mn = Infinity,
+      mx = -Infinity;
+    for (const v of arr) {
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    return mx - mn;
+  };
+
+  const clampTo1Decimal = (v) => Math.round(v * 10) / 10;
+
+  // ---------------- load calibration ----------------
   useEffect(() => {
-    loadActiveCalibration();
+    (async () => {
+      try {
+        const response = await fetch(`${LARAVEL_API}/api/calibration`);
+        if (!response.ok) return;
+
+        const calibrations = await response.json();
+        const active = calibrations.find((cal) => cal.is_active);
+        if (active) {
+          setCalibrationInfo({
+            hasDecimalPoint: Boolean(active.has_decimal_point),
+            decimalPosition: Number(active.decimal_position || 1),
+          });
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [LARAVEL_API]);
+
+  // ---------------- camera startup ----------------
+  useEffect(() => {
+    startHardcodedCamera();
+    return () => {
+      stopOcrLoop();
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadActiveCalibration = async () => {
-    try {
-      const response = await fetch(`${LARAVEL_API}/api/calibration`);
-      if (!response.ok) return;
-
-      const calibrations = await response.json();
-      const active = calibrations.find((cal) => cal.is_active);
-
-      if (active) {
-        setCalibrationInfo({
-          hasDecimalPoint: active.has_decimal_point,
-          decimalPosition: active.decimal_position,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load calibration:", err);
-    }
-  };
-
-  // Helper function to format number with decimal point
-  // Always returns 2 decimal places (e.g., 319 -> 31.90, not 31.9)
-  const formatNumberWithDecimal = (rawNumber, hasDecimal, decimalPos) => {
-    if (!hasDecimal || !rawNumber || rawNumber.includes("?")) {
-      return rawNumber;
-    }
-
-    if (rawNumber.length < decimalPos) {
-      return rawNumber;
-    }
-
-    // Insert decimal from right
-    const insertPos = rawNumber.length - decimalPos;
-    const formattedNumber =
-      rawNumber.slice(0, insertPos) + "." + rawNumber.slice(insertPos);
-
-    // Ensure 2 decimal places (add trailing 0 if needed)
-    // e.g., 31.9 -> 31.90
-    const parts = formattedNumber.split(".");
-    if (parts.length === 2) {
-      const decimalPart = parts[1].padEnd(2, "0");
-      return parts[0] + "." + decimalPart;
-    }
-
-    return formattedNumber;
-  };
-
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image file");
-      return;
-    }
-
-    // Store file for display
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setUploadedImage({
-        file: file,
-        preview: event.target.result,
-      });
-    };
-    reader.readAsDataURL(file);
-
-    // Automatically recognize
-    await recognizeDisplay(file);
-  };
-
-  const recognizeDisplay = async (file) => {
-    const imageFile = file || uploadedImage?.file;
-    if (!imageFile) return;
-
-    setIsProcessing(true);
+  const startHardcodedCamera = async () => {
     setError(null);
+    try {
+      // permission so labels exist
+      const tmpStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+      tmpStream.getTracks().forEach((t) => t.stop());
+
+      const all = await navigator.mediaDevices.enumerateDevices();
+      const cams = all.filter((d) => d.kind === "videoinput");
+
+      const target = cams.find((d) =>
+        (d.label || "")
+          .toLowerCase()
+          .includes(TARGET_CAMERA_NAME.toLowerCase()),
+      );
+
+      if (!target)
+        throw new Error(
+          `Camera not found: "${TARGET_CAMERA_NAME}". Update TARGET_CAMERA_NAME.`,
+        );
+
+      await startCamera(target.deviceId);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Camera could not start. Please allow camera access.");
+    }
+  };
+
+  const startCamera = async (deviceId) => {
+    stopCamera();
+
+    const constraints = {
+      video: {
+        deviceId: { exact: deviceId },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 },
+      },
+      audio: false,
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    streamRef.current = stream;
+
+    const videoEl = videoRef.current;
+    videoEl.srcObject = stream;
+
+    await new Promise((resolve) => {
+      const onReady = () => {
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+          videoEl.removeEventListener("loadeddata", onReady);
+          resolve();
+        }
+      };
+      videoEl.addEventListener("loadeddata", onReady);
+    });
+
+    await videoEl.play();
+
+    startOcrLoop();
+    captureAndRecognize();
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const startOcrLoop = () => {
+    stopOcrLoop();
+    timerRef.current = setInterval(() => {
+      captureAndRecognize();
+    }, OCR_INTERVAL_MS);
+  };
+
+  const stopOcrLoop = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  // ---------------- OCR call ----------------
+  const captureAndRecognize = async () => {
+    if (doneRef.current) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+    if (!streamRef.current) return;
+
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0)
+      return;
+    if (inFlightRef.current) return;
 
     try {
+      inFlightRef.current = true;
+      setError(null);
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      const canvas = canvasRef.current;
+      canvas.width = vw;
+      canvas.height = vh;
+
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, vw, vh);
+
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.9),
+      );
+      if (!blob) return;
+
       const formData = new FormData();
-      formData.append("image", imageFile);
+      formData.append("image", blob, "frame.jpg");
       formData.append("debug", "false");
       formData.append("method", "simple_threshold");
 
-      const response = await fetch(`${FLASK_API}/seven-segment/recognize`, {
+      const res = await fetch(`${FLASK_API}/seven-segment/recognize`, {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Recognition failed");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
       }
+
+      const data = await res.json();
+      if (!data?.success) throw new Error(data?.error || "Recognition failed");
 
       setRecognitionResult(data);
-
-      // Mark test as completed and pass data to parent
-      if (data.is_valid) {
-        const displayNumber = getDisplayNumberFromData(data);
-        const moistureData = {
-          value: displayNumber,
-          timestamp: new Date().toISOString(),
-          digits: data.digits,
-          rawNumber: data.raw_number,
-          fullNumber: data.full_number,
-          isValid: data.is_valid,
-        };
-
-        setTestCompleted(true);
-
-        // Call parent callback with moisture data
-        if (typeof onTestComplete === "function") {
-          onTestComplete(moistureData);
-        }
-      }
-    } catch (err) {
-      setError(err.message);
+    } catch (e) {
+      setError(e?.message || "Live OCR failed");
     } finally {
-      setIsProcessing(false);
+      inFlightRef.current = false;
     }
   };
 
-  const resetAll = () => {
-    setUploadedImage(null);
-    setRecognitionResult(null);
+  // ---------------- Convert OCR -> display string ----------------
+  const displayReading = useMemo(() => {
+    if (!recognitionResult) return "—";
+
+    const raw = String(
+      recognitionResult.raw_number || recognitionResult.full_number || "",
+    ).trim();
+
+    // LOW / Lo -> 00.0
+    if (recognitionResult.mode === "LOW" || /^l/i.test(raw)) {
+      return lowReadingAsZero();
+    }
+
+    // backend already includes decimal
+    if (recognitionResult.full_number && recognitionResult.full_number.includes(".")) {
+      return recognitionResult.full_number;
+    }
+
+    // format using calibration
+    if (calibrationInfo?.hasDecimalPoint && /^\d+$/.test(raw)) {
+      return formatNumberWithDecimal(raw, true, calibrationInfo.decimalPosition);
+    }
+
+    return raw || "—";
+  }, [recognitionResult, calibrationInfo]);
+
+  // ---------------- Stability-triggered collection ----------------
+  useEffect(() => {
+    if (doneRef.current) return;
+
+    const v0 = parseReadingToFloat(displayReading);
+    if (v0 === null) return;
+
+    const v = clampTo1Decimal(v0);
+
+    // LOCKING: build stability window
+    if (phaseRef.current === "LOCKING") {
+      const win =
+        stableWindowRef.current.length >= STABLE_WINDOW
+          ? [...stableWindowRef.current.slice(1), v]
+          : [...stableWindowRef.current, v];
+
+      stableWindowRef.current = win;
+
+      if (win.length < STABLE_WINDOW) return;
+
+      if (range(win) <= STABLE_TOL) {
+        const center = clampTo1Decimal(median(win));
+        lockedCenterRef.current = center;
+
+        samplesRef.current = [];
+        setSampleCount(0);
+
+        phaseRef.current = "COLLECTING";
+        setPhase("COLLECTING");
+      }
+      return;
+    }
+
+    // COLLECTING
+    if (phaseRef.current === "COLLECTING") {
+      const center = lockedCenterRef.current ?? v;
+
+      if (Math.abs(v - center) > COLLECT_TOL) {
+        // reset to locking
+        phaseRef.current = "LOCKING";
+        setPhase("LOCKING");
+
+        stableWindowRef.current = [];
+        lockedCenterRef.current = null;
+
+        samplesRef.current = [];
+        setSampleCount(0);
+        return;
+      }
+
+      if (samplesRef.current.length < TARGET_SAMPLES) {
+        samplesRef.current.push(v);
+        setSampleCount(samplesRef.current.length);
+      }
+
+      if (samplesRef.current.length === TARGET_SAMPLES) {
+        const m = clampTo1Decimal(median(samplesRef.current));
+        const finalStr = m.toFixed(1);
+
+        setFinalReading(finalStr);
+
+        doneRef.current = true;
+        phaseRef.current = "DONE";
+        setPhase("DONE");
+
+        // stop camera automatically when done
+        stopOcrLoop();
+        stopCamera();
+      }
+    }
+  }, [displayReading]);
+
+  const progressPct = useMemo(() => {
+    return Math.round((sampleCount / TARGET_SAMPLES) * 100);
+  }, [sampleCount]);
+
+  const shownValue = finalReading ? finalReading : displayReading;
+
+  // ---------------- Buttons ----------------
+  const handleRetake = async () => {
     setError(null);
-    setTestCompleted(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    setFinalReading(null);
+
+    doneRef.current = false;
+
+    phaseRef.current = "LOCKING";
+    setPhase("LOCKING");
+
+    stableWindowRef.current = [];
+    lockedCenterRef.current = null;
+
+    samplesRef.current = [];
+    setSampleCount(0);
+
+    await startHardcodedCamera();
   };
 
-  // Get the display number (with decimal if configured)
-  const getDisplayNumber = () => {
-    if (!recognitionResult) return null;
-    return getDisplayNumberFromData(recognitionResult);
+  // ✅ Home/back to menu (cancel)
+  const handleBackHome = () => {
+    stopOcrLoop();
+    stopCamera();
+    onMainPageReturn?.();
   };
 
-  const getDisplayNumberFromData = (data) => {
-    if (!data) return null;
+  // ✅ Optional: back to previous stage
+  const handleBackPrevious = () => {
+    stopOcrLoop();
+    stopCamera();
+    onPreviousTest?.();
+  };
 
-    // If the API already formatted it with decimal, use that
-    if (data.full_number && data.full_number.includes(".")) {
-      return data.full_number;
-    }
+  // ✅ PROCEED FIX: this is what WoodTests.jsx expects
+  const handleProceed = () => {
+    if (!finalReading) return;
 
-    // Otherwise, format it using our calibration info
-    if (calibrationInfo && data.raw_number) {
-      return formatNumberWithDecimal(
-        data.raw_number,
-        calibrationInfo.hasDecimalPoint,
-        calibrationInfo.decimalPosition,
-      );
-    }
-
-    return data.full_number || data.raw_number;
+    // send data upward to WoodTests.jsx -> handleMoistureComplete()
+    onTestComplete?.({
+      value: finalReading,
+      numeric: Number(finalReading),
+      unit: "%",
+      method: "median_20_samples",
+      specimenName,
+      capturedAt: new Date().toISOString(),
+    });
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col h-screen w-screen bg-gray-900">
-      {/* Header Bar */}
-      <div className="flex items-center px-3 py-1.5 bg-gray-800 fixed top-0 left-0 right-0 z-10">
-        <button
-          type="button"
-          onClick={onPreviousTest}
-          className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 hover:text-blue-400 transition-colors duration-300"
-          title="Previous Test"
-        >
-          <ArrowLeft className="w-6 h-6" />
-        </button>
-        <span className="ml-4 text-gray-100 text-lg font-semibold">
-          TimberMach | Moisture Test
-        </span>
+    <div className="fixed inset-0 bg-gray-900">
+      {/* Hidden OCR sources */}
+      <video ref={videoRef} className="hidden" playsInline muted />
+      <canvas ref={canvasRef} className="hidden" />
 
-        {/* Test Completion Indicator */}
-        {testCompleted && (
-          <div className="ml-4 flex items-center gap-2 bg-green-900 bg-opacity-30 border border-green-700 rounded-lg px-3 py-1">
-            <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-            <span className="text-green-400 text-sm font-semibold">
-              Test Complete
+      {/* Top bar (below Header.jsx) */}
+      <div
+        className="fixed left-0 right-0 z-10 px-6 flex items-center justify-between"
+        style={{ top: HEADER_OFFSET_PX, paddingTop: 12 }}
+      >
+        <div className="flex gap-3">
+          <button
+            onClick={handleBackHome}
+            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition"
+          >
+            Home
+          </button>
+
+          <button
+            onClick={handleBackPrevious}
+            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition"
+          >
+            Back
+          </button>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={handleRetake}
+            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 transition"
+          >
+            Retake
+          </button>
+
+          <button
+            onClick={handleProceed}
+            disabled={!finalReading}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              finalReading
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "bg-gray-700 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            Proceed
+          </button>
+        </div>
+      </div>
+
+      {/* Center content (keeps number perfectly centered) */}
+      <div
+        className="w-full h-full flex items-center justify-center"
+        style={{ paddingTop: HEADER_OFFSET_PX }}
+        onDoubleClick={handleRetake}
+        title="Double-click to retake"
+      >
+        <div className="text-center select-none">
+          <div className="text-green-400 font-extrabold leading-none text-[140px] md:text-[180px]">
+            {shownValue}
+            <span className="text-[64px] md:text-[80px] ml-3 align-baseline">
+              %
             </span>
           </div>
-        )}
 
-        {calibrationInfo && calibrationInfo.hasDecimalPoint && (
-          <div className="ml-4 text-blue-400 text-xs">
-            Format: {calibrationInfo.decimalPosition === 1 ? "XX.X" : "X.XX"}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onMainPageReturn}
-          className="bg-transparent border-none text-gray-200 text-2xl cursor-pointer p-1.5 ml-auto hover:text-red-500 transition-colors duration-300"
-          title="Return to Main Menu"
-        >
-          <Home className="w-6 h-6" />
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <div className="mt-12 flex-grow overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6 flex items-center gap-2">
-              <X className="w-5 h-5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Upload Section - Only show if no result */}
-          {!recognitionResult && !isProcessing && (
-            <div className="bg-gray-800 rounded-lg p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4 text-white">
-                Upload Moisture Meter Image
-              </h2>
-              <div className="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  id="imageUpload"
-                />
-                <label htmlFor="imageUpload" className="cursor-pointer block">
-                  <Upload className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                  <p className="text-white font-semibold mb-2">
-                    Click to upload image
-                  </p>
-                  <p className="text-gray-400 text-sm">
-                    Upload moisture meter display image for instant recognition
-                  </p>
-                  <p className="text-blue-400 text-xs mt-2">
-                    Supported formats: JPG, PNG, HEIC
-                  </p>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Processing Indicator */}
-          {isProcessing && (
-            <div className="bg-blue-900 border border-blue-700 rounded-lg p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
-              <p className="text-blue-200 font-semibold">
-                Recognizing display...
-              </p>
-              <p className="text-gray-400 text-sm mt-2">
-                This may take a few seconds
-              </p>
-            </div>
-          )}
-
-          {/* Recognition Result - Only the reading */}
-          {recognitionResult && !isProcessing && (
-            <div className="bg-gray-800 rounded-lg p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-white">
-                  Recognition Result
-                </h2>
-                <button
-                  onClick={resetAll}
-                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-white"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  New Reading
-                </button>
+          {!finalReading && (
+            <div className="mt-8 w-[520px] max-w-[85vw] mx-auto">
+              <div className="flex justify-between text-xs text-slate-400 mb-2">
+                <span>
+                  {phase === "LOCKING"
+                    ? `Waiting for stability… (±${STABLE_TOL.toFixed(1)})`
+                    : `Collecting… (${sampleCount}/${TARGET_SAMPLES})`}
+                </span>
+                <span>{phase === "COLLECTING" ? `${progressPct}%` : ""}</span>
               </div>
 
-              {/* Display the uploaded image */}
-              {uploadedImage && (
-                <div className="mb-6 rounded-lg overflow-hidden">
-                  <img
-                    src={uploadedImage.preview}
-                    alt="Uploaded moisture meter"
-                    className="w-full h-auto max-h-96 object-contain bg-gray-900 rounded-lg"
-                  />
-                </div>
-              )}
-
-              <div
-                className={`${
-                  recognitionResult.is_valid
-                    ? "bg-green-900 border-green-700"
-                    : "bg-yellow-900 border-yellow-700"
-                } bg-opacity-30 border rounded-lg p-12 text-center`}
-              >
-                <div className="text-gray-300 text-base mb-4">
-                  Moisture Reading
-                </div>
+              <div className="h-3 rounded-full bg-slate-700 overflow-hidden">
                 <div
-                  className={`text-8xl font-bold mb-4 ${
-                    recognitionResult.is_valid
-                      ? "text-green-400"
-                      : "text-yellow-400"
-                  }`}
-                >
-                  {getDisplayNumber()}
-                  <span className="text-4xl ml-2">%</span>
-                </div>
-                <div className="text-base text-gray-400 mb-2">
-                  {recognitionResult.is_valid
-                    ? "✓ Valid Reading"
-                    : "⚠ Check Reading"}
-                </div>
-                {calibrationInfo && calibrationInfo.hasDecimalPoint && (
-                  <div className="text-sm text-blue-300 mt-2">
-                    Format:{" "}
-                    {calibrationInfo.decimalPosition === 1 ? "XX.X" : "X.XX"}
-                  </div>
-                )}
-
-                {/* Recognition Details */}
-                <div className="mt-6 pt-6 border-t border-gray-600">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="text-left">
-                      <div className="text-gray-400">Raw Number:</div>
-                      <div className="text-white font-mono">
-                        {recognitionResult.raw_number}
-                      </div>
-                    </div>
-                    <div className="text-left">
-                      <div className="text-gray-400">Formatted:</div>
-                      <div className="text-white font-mono">
-                        {recognitionResult.full_number}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  className="h-full bg-green-500 transition-all duration-150"
+                  style={{ width: `${phase === "COLLECTING" ? progressPct : 0}%` }}
+                />
               </div>
 
-              {/* Test Complete Message */}
-              {testCompleted && (
-                <div className="mt-6 bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-4 text-center">
-                  <p className="text-green-400 font-semibold">
-                    ✓ Moisture test data saved successfully
-                  </p>
-                  <p className="text-gray-400 text-sm mt-1">
-                    You can proceed to the next test or retake this measurement
-                  </p>
-                </div>
-              )}
+              <div className="mt-2 text-[11px] text-slate-500">
+                Stable window triggers auto-sampling. Jitter of about ±
+                {COLLECT_TOL.toFixed(1)} is allowed. Double-click to retake.
+              </div>
             </div>
           )}
 
-          {/* Instructions */}
-          {!recognitionResult && !isProcessing && (
-            <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-6 mt-6">
-              <h3 className="text-blue-400 font-semibold mb-3 flex items-center gap-2">
-                <span className="text-xl">ℹ️</span>
-                How to Use
-              </h3>
-              <ul className="text-gray-300 text-sm space-y-2">
-                <li>
-                  • Take a clear photo of your moisture meter's digital display
-                </li>
-                <li>• Ensure good lighting and the display is in focus</li>
-                <li>• The system will automatically recognize the reading</li>
-                <li>
-                  • Calibration must be set up in advance (check settings)
-                </li>
-              </ul>
+          {finalReading && (
+            <div className="mt-4 text-sm text-slate-300">
+              Final reading (median of {TARGET_SAMPLES} samples)
             </div>
           )}
+
+          {error && <div className="mt-4 text-xs text-red-300">{error}</div>}
         </div>
       </div>
-
-      {/* Bottom Navigation - Only show when test is complete */}
-      {testCompleted && (
-        <div className="bg-gray-800 border-t border-gray-700 p-4">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <button
-              onClick={onPreviousTest}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Previous Test
-            </button>
-
-            <div className="text-center">
-              <div className="text-gray-400 text-sm">
-                Moisture Reading Recorded
-              </div>
-              <div className="text-green-400 text-xl font-bold">
-                {getDisplayNumber()}%
-              </div>
-            </div>
-
-            <button
-              onClick={resetAll}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors"
-            >
-              <RotateCcw className="w-5 h-5" />
-              Retake Measurement
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
