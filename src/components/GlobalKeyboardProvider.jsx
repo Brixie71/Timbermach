@@ -40,9 +40,8 @@ export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
       const target = e.target;
 
       const isKeyboardTarget =
-        (target?.tagName === "INPUT" && (target.type === "text" || target.type === "search")) ||
-        target?.hasAttribute?.("data-keyboard") ||
-        target?.classList?.contains?.("keyboard-trigger");
+      (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") &&
+      (target?.hasAttribute?.("data-keyboard") || target?.classList?.contains?.("keyboard-trigger"));
 
       if (!isKeyboardTarget) return;
 
@@ -87,9 +86,9 @@ export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
     syncValueToInput(fullValue);
   };
 
-  const handleClose = (finalValue) => {
+  const handleClose = () => {
     if (currentInput) {
-      syncValueToInput(finalValue);
+      // DO NOT sync here; value is already synced per keypress
       currentInput.blur();
     }
     setIsKeyboardVisible(false);
