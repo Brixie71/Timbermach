@@ -30,13 +30,13 @@ const MoistureTest = ({
   const TARGET_CAMERA_NAME = "HX-USB Camera (0c45:64ab)";
 
   // ✅ OCR interval + target samples
-  const OCR_INTERVAL_MS = 500;
-  const TARGET_SAMPLES = 20;
+  const OCR_INTERVAL_MS = 200;
+  const TARGET_SAMPLES = 5;
 
   // ✅ Stability + jitter tolerance
   const STABLE_WINDOW = 6;
-  const STABLE_TOL = 1.0; // stable if range within this
-  const COLLECT_TOL = 1.0; // while collecting, allowed deviation from locked center
+  const STABLE_TOL = 3.0; // stable if range within this
+  const COLLECT_TOL = 2.0; // while collecting, allowed deviation from locked center
 
   // ✅ Layout offset so controls won’t go under Header.jsx
   // If your header is taller, increase this (e.g., 72 or 80).
@@ -167,13 +167,13 @@ const MoistureTest = ({
 
       if (!target)
         throw new Error(
-          `Camera not found: "${TARGET_CAMERA_NAME}". Update TARGET_CAMERA_NAME.`,
+          `Check the Moisture Sensor`
         );
 
       await startCamera(target.deviceId);
     } catch (e) {
       console.error(e);
-      setError(e?.message || "Camera could not start. Please allow camera access.");
+      setError(e?.message || "Moisture Sensor could not start. Check the Connections.");
     }
   };
 
