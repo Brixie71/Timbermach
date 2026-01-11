@@ -122,6 +122,37 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     return data?.compressive_id || data?.shear_id || data?.flexure_id;
   }, [data]);
 
+  const draftKey = useMemo(() => {
+  const id = data?.compressive_id || data?.shear_id || data?.flexure_id;
+  return id ? `specimenEditDraft:${dataType}:${id}` : null;
+  }, [data, dataType]);
+
+  const loadDraft = () => {
+    if (!draftKey) return null;
+    try {
+      const raw = sessionStorage.getItem(draftKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveDraft = (patch) => {
+    if (!draftKey) return;
+    try {
+      const cur = loadDraft() || {};
+      sessionStorage.setItem(draftKey, JSON.stringify({ ...cur, ...patch }));
+    } catch {}
+  };
+
+  const clearDraft = () => {
+    if (!draftKey) return;
+    try {
+      sessionStorage.removeItem(draftKey);
+    } catch {}
+  };
+
+
   // Initial values (only used as defaultValue)
   const initial = useMemo(() => {
     const v = (key, fallbackKey) => data?.[key] ?? data?.[fallbackKey] ?? "";
@@ -138,6 +169,24 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       species_id: data?.species_id ?? null,
     };
   }, [data]);
+
+  const draft = useMemo(() => loadDraft(), [draftKey]);
+
+  const start = useMemo(() => {
+    return {
+      specimen_name: draft?.specimen_name ?? initial.specimen_name,
+      test_type: draft?.test_type ?? initial.test_type,
+      base: draft?.base ?? initial.base,
+      height: draft?.height ?? initial.height,
+      length: draft?.length ?? initial.length,
+      area: draft?.area ?? initial.area,
+      max_force: draft?.max_force ?? initial.max_force,
+      stress: draft?.stress ?? initial.stress,
+      moisture_content: draft?.moisture_content ?? initial.moisture_content,
+      species_id: draft?.species_id ?? (initial.species_id || ""),
+    };
+  }, [draft, initial]);
+
 
   useEffect(() => {
     const fetchSpecies = async () => {
@@ -224,8 +273,9 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       };
 
       await axios.put(`http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`, payload);
-
+      clearDraft();
       setShowSuccessModal(true);
+      
     } catch (err) {
       console.error("Error updating data:", err);
       alert(`Failed to update: ${err.response?.data?.detail || err.message}`);
@@ -302,7 +352,8 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                   <input
                     ref={specimenNameRef}
                     type="text"
-                    defaultValue={initial.specimen_name}
+                    defaultValue={start.specimen_name}
+                    onInput={(e) => saveDraft({ specimen_name: e.currentTarget.value })}
                     className={`${inputBaseClass} ${errBorder("specimen_name")} keyboard-trigger`}
                     data-keyboard="1"
                   />
@@ -314,7 +365,8 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                   <input
                     ref={testTypeRef}
                     type="text"
-                    defaultValue={initial.test_type}
+                    defaultValue={start.test_type}
+                    onInput={(e) => saveDraft({ test_type: e.currentTarget.value })}
                     className={`${inputBaseClass} ${errBorder("test_type")} keyboard-trigger`}
                     data-keyboard="1"
                   />
@@ -325,9 +377,11 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                 <Field label="Reference Species">
                   <select
                     ref={speciesRef}
-                    defaultValue={initial.species_id || ""}
+                    defaultValue={start.species_id}
+                    onChange={(e) => saveDraft({ species_id: e.target.value })}
                     className={inputBaseClass}
                   >
+
                     <option value="">{loadingSpecies ? "Loading..." : "No Reference Selected"}</option>
                     {species.map((s) => (
                       <option key={s.id || s.species_id} value={s.id || s.species_id}>
@@ -342,54 +396,69 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                 <input
                   ref={baseRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.base}
-                  onInput={recalcArea}
+                  inputMode="text"
+                  defaultValue={start.base}
+                  onInput={(e) => {
+                    saveDraft({ base: e.currentTarget.value });
+                    recalcArea();
+                    if (areaRef.current) saveDraft({ area: areaRef.current.value });
+                  }}
                   className={`${inputBaseClass} ${errBorder("base")} keyboard-trigger`}
                   data-keyboard="1"
                 />
+
               </Field>
 
               <Field label="Height (mm)" required errorKey="height">
                 <input
                   ref={heightRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.height}
-                  onInput={recalcArea}
+                  inputMode="text"
+                  defaultValue={start.height}
+                  onInput={(e) => {
+                    saveDraft({ height: e.currentTarget.value });
+                    recalcArea();
+                    if (areaRef.current) saveDraft({ area: areaRef.current.value });
+                  }}
                   className={`${inputBaseClass} ${errBorder("height")} keyboard-trigger`}
                   data-keyboard="1"
                 />
               </Field>
 
+
               <Field label="Length (mm)" required errorKey="length">
                 <input
                   ref={lengthRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.length}
+                  inputMode="text"
+                  defaultValue={start.length}
+                  onInput={(e) => saveDraft({ length: e.currentTarget.value })}
                   className={`${inputBaseClass} ${errBorder("length")} keyboard-trigger`}
                   data-keyboard="1"
                 />
               </Field>
 
+
               <Field label="Area (mm²)" required errorKey="area">
                 <input
                   ref={areaRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.area}
+                  inputMode="text"
+                  defaultValue={start.area}
+                  onInput={(e) => saveDraft({ area: e.currentTarget.value })}
                   className={`${inputBaseClass} ${errBorder("area")} keyboard-trigger`}
                   data-keyboard="1"
                 />
               </Field>
 
+
               <Field label="Maximum Force (N)" required errorKey="max_force">
                 <input
                   ref={maxForceRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.max_force}
+                  inputMode="text"
+                  defaultValue={start.max_force}
+                  onInput={(e) => saveDraft({ max_force: e.currentTarget.value })}
                   className={`${inputBaseClass} ${errBorder("max_force")} keyboard-trigger`}
                   data-keyboard="1"
                 />
@@ -399,20 +468,23 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                 <input
                   ref={stressRef}
                   type="text"
-                  inputMode="decimal"
-                  defaultValue={initial.stress}
+                  inputMode="text"
+                  defaultValue={start.stress}
+                  onInput={(e) => saveDraft({ stress: e.currentTarget.value })}
                   className={`${inputBaseClass} ${errBorder("stress")} keyboard-trigger`}
                   data-keyboard="1"
                 />
               </Field>
+
 
               <div className="col-span-2">
                 <Field label="Moisture Content (%)">
                   <input
                     ref={moistureRef}
                     type="text"
-                    inputMode="decimal"
-                    defaultValue={initial.moisture_content}
+                    inputMode="text"
+                    defaultValue={start.moisture_content}
+                    onInput={(e) => saveDraft({ moisture_content: e.currentTarget.value })}
                     className={`${inputBaseClass} keyboard-trigger`}
                     data-keyboard="1"
                     placeholder="Optional"
