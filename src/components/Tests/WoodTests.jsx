@@ -552,13 +552,23 @@ const WoodTests = ({ darkMode = false }) => {
             type="text"
             value={specimenName}
             onChange={(e) => setSpecimenName(e.target.value)}
+            onFocus={(e) => {
+              // Optional: stop OS keyboard on touchscreens
+              // The virtual keyboard will still open because GlobalKeyboardProvider listens to focusin
+              if ("ontouchstart" in window) {
+                e.target.blur();
+                setTimeout(() => e.target.focus(), 0);
+              }
+            }}
             placeholder="Enter specimen name"
-            className={`w-full px-2 py-1.5 border-2 focus:outline-none text-[15px] ${
+            data-keyboard="1"
+            className={`w-full px-2 py-1.5 border-2 focus:outline-none text-[15px] keyboard-trigger ${
               darkMode
                 ? "bg-gray-800 border-gray-600 text-gray-100 placeholder-gray-500 focus:border-blue-400"
                 : "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500"
             }`}
           />
+
         </div>
 
         {/* Two Column Layout - TAKES UP REMAINING SPACE */}
