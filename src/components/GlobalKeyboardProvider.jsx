@@ -35,15 +35,16 @@ export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
   const [inputValue, setInputValue] = useState("");
   const [keyboardMode, setKeyboardMode] = useState("text");
 
+  const isKeyboardTarget = (target) =>
+    (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") &&
+    (target?.hasAttribute?.("data-keyboard") ||
+      target?.classList?.contains?.("keyboard-trigger"));
+
   useEffect(() => {
     const handleFocusIn = (e) => {
       const target = e.target;
 
-      const isKeyboardTarget =
-      (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") &&
-      (target?.hasAttribute?.("data-keyboard") || target?.classList?.contains?.("keyboard-trigger"));
-
-      if (!isKeyboardTarget) return;
+      if (!isKeyboardTarget(target)) return;
 
       // ✅ DO NOT set readOnly. It breaks controlled inputs in React.
       // ✅ Also do NOT preventDefault here; let focus happen normally.
@@ -58,26 +59,50 @@ export const GlobalKeyboardProvider = ({ children, darkMode = false }) => {
     return () => document.removeEventListener("focusin", handleFocusIn, true);
   }, []);
 
+  useEffect(() => {
+    const handlePointerDown = (e) => {
+      if (!isKeyboardVisible) return;
+
+      const target = e.target;
+      const insideKeyboard = target?.closest?.("[data-virtual-keyboard]");
+
+      if (insideKeyboard || isKeyboardTarget(target)) return;
+
+      if (currentInput) currentInput.blur();
+      setIsKeyboardVisible(false);
+      setCurrentInput(null);
+      setInputValue("");
+      setKeyboardMode("text");
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [isKeyboardVisible, currentInput]);
+
   const syncValueToInput = (value) => {
     if (!currentInput) return;
 
     // Set DOM value using the native setter (so React can detect it)
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-
+    const proto =
+      currentInput instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     setter?.call(currentInput, value);
 
-    // ✅ Fire a REAL input event (React-friendly)
-    let evt;
+    // Fire input + change so React consistently picks it up across environments.
     try {
-      evt = new InputEvent("input", { bubbles: true });
+      currentInput.dispatchEvent(new Event("input", { bubbles: true }));
+      currentInput.dispatchEvent(new Event("change", { bubbles: true }));
     } catch {
-      evt = document.createEvent("Event");
+      const evt = document.createEvent("Event");
       evt.initEvent("input", true, true);
+      currentInput.dispatchEvent(evt);
+      const changeEvt = document.createEvent("Event");
+      changeEvt.initEvent("change", true, true);
+      currentInput.dispatchEvent(changeEvt);
     }
-    currentInput.dispatchEvent(evt);
   };
 
   const handleKeyPress = (fullValue) => {

@@ -1,101 +1,41 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import "./SpecimenEdit.css";
 
-/* -------------------- Modals (kept) -------------------- */
-const SaveConfirmationModal = ({ isOpen, onClose, onConfirm, darkMode = false }) => {
+const SaveConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
   if (!isOpen) return null;
   return (
-    <div
-      className="absolute inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className={`shadow-2xl overflow-hidden max-w-md w-full mx-4 ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          className={`px-6 py-4 border-b-2 ${
-            darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-100 border-gray-300"
-          }`}
-        >
-          <h3 className={`text-xl font-bold ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
-            Confirm Save Changes
-          </h3>
-        </div>
-
-        <div className="p-6">
-          <p className={`text-lg mb-6 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>
-            Are you sure you want to save these changes? This will update the specimen data in the database.
-          </p>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              type="button"
-              className={`flex-1 py-3 font-semibold transition-all ${
-                darkMode ? "bg-gray-700 text-gray-200 hover:bg-gray-600" : "bg-gray-300 text-gray-900 hover:bg-gray-400"
-              }`}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              type="button"
-              className="flex-1 py-3 font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-all"
-            >
-              Save Changes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SuccessModal = ({ isOpen, onClose, darkMode = false }) => {
-  if (!isOpen) return null;
-  return (
-    <div
-      className="absolute inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className={`shadow-2xl overflow-hidden max-w-md w-full mx-4 ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-center pt-8">
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-        </div>
-
-        <div className="p-6 text-center">
-          <h3 className={`text-2xl font-bold mb-2 ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
-            Success!
-          </h3>
-          <p className={`text-lg mb-6 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>
-            Data updated successfully
-          </p>
-
-          <button
-            onClick={onClose}
-            type="button"
-            className="w-full py-3 font-semibold bg-green-500 text-white hover:bg-green-600 transition-all"
-          >
-            OK
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Confirm Save</h3>
+        <p>Save changes to this specimen?</p>
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}>
+            Save
           </button>
         </div>
       </div>
     </div>
   );
 };
-/* ------------------------------------------------------ */
+
+const SuccessModal = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Saved</h3>
+        <p>Specimen updated successfully.</p>
+        <button type="button" onClick={onClose}>
+          OK
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => {
   const [species, setSpecies] = useState([]);
@@ -106,25 +46,13 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // ✅ UNCONTROLLED refs (virtual keyboard updates DOM directly)
-  const specimenNameRef = useRef(null);
-  const testTypeRef = useRef(null);
-  const baseRef = useRef(null);
-  const heightRef = useRef(null);
-  const lengthRef = useRef(null);
-  const areaRef = useRef(null);
-  const maxForceRef = useRef(null);
-  const stressRef = useRef(null);
-  const moistureRef = useRef(null);
-  const speciesRef = useRef(null);
-
   const specimenId = useMemo(() => {
     return data?.compressive_id || data?.shear_id || data?.flexure_id;
   }, [data]);
 
   const draftKey = useMemo(() => {
-  const id = data?.compressive_id || data?.shear_id || data?.flexure_id;
-  return id ? `specimenEditDraft:${dataType}:${id}` : null;
+    const id = data?.compressive_id || data?.shear_id || data?.flexure_id;
+    return id ? `specimenEditDraft:${dataType}:${id}` : null;
   }, [data, dataType]);
 
   const loadDraft = () => {
@@ -152,8 +80,6 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     } catch {}
   };
 
-
-  // Initial values (only used as defaultValue)
   const initial = useMemo(() => {
     const v = (key, fallbackKey) => data?.[key] ?? data?.[fallbackKey] ?? "";
     return {
@@ -166,7 +92,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       max_force: v("max_force", "Maximum Force"),
       stress: v("stress", "Stress"),
       moisture_content: v("moisture_content", "Moisture Content"),
-      species_id: data?.species_id ?? null,
+      species_id: data?.species_id ?? "",
     };
   }, [data]);
 
@@ -183,16 +109,25 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       max_force: draft?.max_force ?? initial.max_force,
       stress: draft?.stress ?? initial.stress,
       moisture_content: draft?.moisture_content ?? initial.moisture_content,
-      species_id: draft?.species_id ?? (initial.species_id || ""),
+      species_id: draft?.species_id ?? initial.species_id,
     };
   }, [draft, initial]);
 
+  const [form, setForm] = useState(start);
+
+  useEffect(() => {
+    setForm(start);
+  }, [start]);
+
+  const updateForm = (patch) => {
+    setForm((prev) => ({ ...prev, ...patch }));
+    saveDraft(patch);
+  };
 
   useEffect(() => {
     const fetchSpecies = async () => {
       setLoadingSpecies(true);
       try {
-        // ✅ Use the endpoint you actually have (you used this elsewhere)
         const res = await axios.get("http://127.0.0.1:8000/api/reference-values");
         setSpecies(Array.isArray(res.data) ? res.data : []);
       } catch (e) {
@@ -205,41 +140,41 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     fetchSpecies();
   }, []);
 
-  // Auto-calc area when base/height change (works for both physical + VK)
-  const recalcArea = () => {
-    const b = parseFloat(baseRef.current?.value || "");
-    const h = parseFloat(heightRef.current?.value || "");
-    if (!isNaN(b) && b > 0 && !isNaN(h) && h > 0 && areaRef.current) {
-      areaRef.current.value = (b * h).toFixed(2);
+  const computeArea = (baseValue, heightValue) => {
+    const b = parseFloat(String(baseValue ?? ""));
+    const h = parseFloat(String(heightValue ?? ""));
+    if (!Number.isFinite(b) || b <= 0 || !Number.isFinite(h) || h <= 0) {
+      return null;
     }
+    return (b * h).toString();
   };
 
-  const read = (ref) => (ref.current ? String(ref.current.value ?? "") : "");
-  const readNum = (ref) => {
-    const n = parseFloat(read(ref));
+  const readText = (value) => String(value ?? "");
+  const readNum = (value) => {
+    const n = parseFloat(readText(value));
     return Number.isFinite(n) ? n : NaN;
   };
 
   const validate = () => {
     const nextErrors = {};
 
-    const specimen_name = read(specimenNameRef).trim();
-    const test_type = read(testTypeRef).trim();
+    const specimen_name = readText(form.specimen_name).trim();
+    const test_type = readText(form.test_type).trim();
 
     if (!specimen_name) nextErrors.specimen_name = "Specimen name is required";
     if (!test_type) nextErrors.test_type = "Test type is required";
 
     const numericFields = [
-      ["base", baseRef],
-      ["height", heightRef],
-      ["length", lengthRef],
-      ["area", areaRef],
-      ["max_force", maxForceRef],
-      ["stress", stressRef],
+      ["base", form.base],
+      ["height", form.height],
+      ["length", form.length],
+      ["area", form.area],
+      ["max_force", form.max_force],
+      ["stress", form.stress],
     ];
 
-    for (const [key, ref] of numericFields) {
-      const n = readNum(ref);
+    for (const [key, value] of numericFields) {
+      const n = readNum(value);
       if (!Number.isFinite(n) || n <= 0) nextErrors[key] = "Must be a positive number";
     }
 
@@ -260,22 +195,24 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       if (!specimenId) throw new Error("No specimen ID found.");
 
       const payload = {
-        specimen_name: read(specimenNameRef).trim(),
-        test_type: read(testTypeRef).trim(),
-        base: readNum(baseRef),
-        height: readNum(heightRef),
-        length: readNum(lengthRef),
-        area: readNum(areaRef),
-        max_force: readNum(maxForceRef),
-        stress: readNum(stressRef),
-        moisture_content: read(moistureRef).trim() === "" ? null : readNum(moistureRef),
-        species_id: speciesRef.current?.value ? parseInt(speciesRef.current.value, 10) : null,
+        specimen_name: readText(form.specimen_name).trim(),
+        test_type: readText(form.test_type).trim(),
+        base: readNum(form.base),
+        height: readNum(form.height),
+        length: readNum(form.length),
+        area: readNum(form.area),
+        max_force: readNum(form.max_force),
+        stress: readNum(form.stress),
+        moisture_content:
+          readText(form.moisture_content).trim() === ""
+            ? null
+            : readNum(form.moisture_content),
+        species_id: form.species_id ? parseInt(form.species_id, 10) : null,
       };
 
       await axios.put(`http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`, payload);
       clearDraft();
       setShowSuccessModal(true);
-      
     } catch (err) {
       console.error("Error updating data:", err);
       alert(`Failed to update: ${err.response?.data?.detail || err.message}`);
@@ -290,250 +227,182 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     onClose?.();
   };
 
-  const inputBaseClass = `w-full px-3 py-2 rounded-lg border focus:outline-none text-[13px] font-semibold ${
-    darkMode
-      ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400"
-      : "bg-white border-gray-300 text-gray-900 focus:border-blue-600"
-  }`;
-
-  const errBorder = (k) => (errors[k] ? "border-red-500" : "");
-
-  const Field = ({ label, required, errorKey, children }) => (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <label className={`text-[12px] font-extrabold ${darkMode ? "text-gray-300" : "text-gray-800"}`}>
-          {label} {required ? <span className="text-red-500">*</span> : null}
-        </label>
-        {errorKey && errors[errorKey] ? (
-          <span className="text-[11px] text-red-500 font-bold">{errors[errorKey]}</span>
-        ) : null}
-      </div>
-      {children}
-    </div>
-  );
+  const fieldClass = `field ${darkMode ? "field-dark" : ""}`;
+  const inputClass = `input ${darkMode ? "input-dark" : ""}`;
 
   return (
-    <div className={`relative w-full h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
-      {/* Header */}
-      <div
-        className={`flex items-center justify-between px-4 border-b ${
-          darkMode ? "border-gray-700 bg-gray-950" : "border-gray-300 bg-white"
-        }`}
-        style={{ height: "60px" }}
-      >
-        <div className="min-w-0">
-          <div className={`text-[14px] font-extrabold ${darkMode ? "text-gray-100" : "text-gray-900"} truncate`}>
-            Edit Specimen
-          </div>
-          <div className={`text-[12px] ${darkMode ? "text-gray-300" : "text-gray-600"} truncate`}>
-            {initial.specimen_name || "Unknown"} • {dataType}
-          </div>
+    <div className={`specimen-edit ${darkMode ? "theme-dark" : "theme-light"}`}>
+      <div className="header">
+        <div>
+          <div className="title">Edit Specimen</div>
+          <div className="subtitle">{initial.specimen_name || "Unknown"} - {dataType}</div>
+        </div>
+        <button type="button" onClick={onClose}>Close</button>
+      </div>
+
+      <div className="content">
+        <div className={fieldClass}>
+          <label>Specimen Name *</label>
+          <input
+            type="text"
+            value={form.specimen_name}
+            onInput={(e) => updateForm({ specimen_name: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+          />
+          {errors.specimen_name ? <div className="error">{errors.specimen_name}</div> : null}
         </div>
 
-        <button
-          onClick={onClose}
-          type="button"
-          className={`p-2 rounded-lg transition-colors ${
-            darkMode ? "text-gray-200 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100"
-          }`}
-          title="Close"
-        >
-          ✕
+        <div className={fieldClass}>
+          <label>Test Type *</label>
+          <input
+            type="text"
+            value={form.test_type}
+            onInput={(e) => updateForm({ test_type: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+          />
+          {errors.test_type ? <div className="error">{errors.test_type}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Reference Species</label>
+          <select
+            value={form.species_id}
+            onChange={(e) => updateForm({ species_id: e.target.value })}
+            className={inputClass}
+          >
+            <option value="">{loadingSpecies ? "Loading..." : "No Reference Selected"}</option>
+            {species.map((s) => (
+              <option key={s.id || s.species_id} value={s.id || s.species_id}>
+                {s.common_name || s.species_name || s.botanical_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={fieldClass}>
+          <label>Base (mm) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.base}
+            onInput={(e) => {
+              const nextBase = e.currentTarget.value;
+              const nextArea = computeArea(nextBase, form.height);
+              updateForm({ base: nextBase, ...(nextArea ? { area: nextArea } : {}) });
+            }}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.base ? <div className="error">{errors.base}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Height (mm) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.height}
+            onInput={(e) => {
+              const nextHeight = e.currentTarget.value;
+              const nextArea = computeArea(form.base, nextHeight);
+              updateForm({ height: nextHeight, ...(nextArea ? { area: nextArea } : {}) });
+            }}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.height ? <div className="error">{errors.height}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Length (mm) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.length}
+            onInput={(e) => updateForm({ length: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.length ? <div className="error">{errors.length}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Area (mm^2) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.area}
+            onInput={(e) => updateForm({ area: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.area ? <div className="error">{errors.area}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Maximum Force (N) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.max_force}
+            onInput={(e) => updateForm({ max_force: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.max_force ? <div className="error">{errors.max_force}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Stress (MPa) *</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.stress}
+            onInput={(e) => updateForm({ stress: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+          {errors.stress ? <div className="error">{errors.stress}</div> : null}
+        </div>
+
+        <div className={fieldClass}>
+          <label>Moisture Content (%)</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.moisture_content}
+            onInput={(e) => updateForm({ moisture_content: e.currentTarget.value })}
+            className={inputClass}
+            data-keyboard="1"
+            data-keyboard-mode="numeric"
+          />
+        </div>
+      </div>
+
+      <div className="actions">
+        <button type="button" onClick={onClose}>
+          Cancel
         </button>
-      </div>
-
-      {/* Body */}
-      <div className="h-[calc(100%-60px)] overflow-y-auto pb-24">
-        <div className="p-3">
-          <div className={`rounded-xl border ${darkMode ? "border-gray-700 bg-gray-900" : "border-gray-300 bg-white"}`}>
-            <div className="p-3 grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Field label="Specimen Name" required errorKey="specimen_name">
-                  <input
-                    ref={specimenNameRef}
-                    type="text"
-                    defaultValue={start.specimen_name}
-                    onInput={(e) => saveDraft({ specimen_name: e.currentTarget.value })}
-                    className={`${inputBaseClass} ${errBorder("specimen_name")} keyboard-trigger`}
-                    data-keyboard="1"
-                  />
-                </Field>
-              </div>
-
-              <div className="col-span-2">
-                <Field label="Test Type" required errorKey="test_type">
-                  <input
-                    ref={testTypeRef}
-                    type="text"
-                    defaultValue={start.test_type}
-                    onInput={(e) => saveDraft({ test_type: e.currentTarget.value })}
-                    className={`${inputBaseClass} ${errBorder("test_type")} keyboard-trigger`}
-                    data-keyboard="1"
-                  />
-                </Field>
-              </div>
-
-              <div className="col-span-2">
-                <Field label="Reference Species">
-                  <select
-                    ref={speciesRef}
-                    defaultValue={start.species_id}
-                    onChange={(e) => saveDraft({ species_id: e.target.value })}
-                    className={inputBaseClass}
-                  >
-
-                    <option value="">{loadingSpecies ? "Loading..." : "No Reference Selected"}</option>
-                    {species.map((s) => (
-                      <option key={s.id || s.species_id} value={s.id || s.species_id}>
-                        {s.common_name || s.species_name || s.botanical_name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="Base (mm)" required errorKey="base">
-                <input
-                  ref={baseRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.base}
-                  onInput={(e) => {
-                    saveDraft({ base: e.currentTarget.value });
-                    recalcArea();
-                    if (areaRef.current) saveDraft({ area: areaRef.current.value });
-                  }}
-                  className={`${inputBaseClass} ${errBorder("base")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-
-              </Field>
-
-              <Field label="Height (mm)" required errorKey="height">
-                <input
-                  ref={heightRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.height}
-                  onInput={(e) => {
-                    saveDraft({ height: e.currentTarget.value });
-                    recalcArea();
-                    if (areaRef.current) saveDraft({ area: areaRef.current.value });
-                  }}
-                  className={`${inputBaseClass} ${errBorder("height")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-              </Field>
-
-
-              <Field label="Length (mm)" required errorKey="length">
-                <input
-                  ref={lengthRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.length}
-                  onInput={(e) => saveDraft({ length: e.currentTarget.value })}
-                  className={`${inputBaseClass} ${errBorder("length")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-              </Field>
-
-
-              <Field label="Area (mm²)" required errorKey="area">
-                <input
-                  ref={areaRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.area}
-                  onInput={(e) => saveDraft({ area: e.currentTarget.value })}
-                  className={`${inputBaseClass} ${errBorder("area")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-              </Field>
-
-
-              <Field label="Maximum Force (N)" required errorKey="max_force">
-                <input
-                  ref={maxForceRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.max_force}
-                  onInput={(e) => saveDraft({ max_force: e.currentTarget.value })}
-                  className={`${inputBaseClass} ${errBorder("max_force")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-              </Field>
-
-              <Field label="Stress (MPa)" required errorKey="stress">
-                <input
-                  ref={stressRef}
-                  type="text"
-                  inputMode="text"
-                  defaultValue={start.stress}
-                  onInput={(e) => saveDraft({ stress: e.currentTarget.value })}
-                  className={`${inputBaseClass} ${errBorder("stress")} keyboard-trigger`}
-                  data-keyboard="1"
-                />
-              </Field>
-
-
-              <div className="col-span-2">
-                <Field label="Moisture Content (%)">
-                  <input
-                    ref={moistureRef}
-                    type="text"
-                    inputMode="text"
-                    defaultValue={start.moisture_content}
-                    onInput={(e) => saveDraft({ moisture_content: e.currentTarget.value })}
-                    className={`${inputBaseClass} keyboard-trigger`}
-                    data-keyboard="1"
-                    placeholder="Optional"
-                  />
-                </Field>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom bar */}
-      <div className={`absolute left-0 right-0 bottom-0 border-t ${darkMode ? "border-gray-700 bg-gray-950" : "border-gray-300 bg-white"}`}>
-        <div className="px-3 py-3 flex gap-3">
-          <button
-            onClick={onClose}
-            type="button"
-            className={`flex-1 py-3 rounded-lg font-extrabold text-[13px] transition-all ${
-              darkMode ? "bg-gray-800 text-gray-100 hover:bg-gray-700" : "bg-gray-200 text-gray-900 hover:bg-gray-300"
-            }`}
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            type="button"
-            className={`flex-1 py-3 rounded-lg font-extrabold text-[13px] transition-all ${
-              saving
-                ? darkMode
-                  ? "bg-gray-800 text-gray-400 cursor-not-allowed"
-                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
+        <button type="button" onClick={handleSubmit} disabled={saving}>
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
       </div>
 
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={confirmSave}
-        darkMode={darkMode}
       />
 
-      <SuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} darkMode={darkMode} />
+      <SuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} />
     </div>
   );
 };

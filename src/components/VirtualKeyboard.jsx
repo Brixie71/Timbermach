@@ -8,6 +8,7 @@ const VirtualKeyboard = ({
   mode = "text", // "text" | "numeric"
 }) => {
   const [input, setInput] = useState(initialValue);
+  const inputRef = useRef(initialValue || "");
   const [isShift, setIsShift] = useState(false);
   const [isCapsLock, setIsCapsLock] = useState(false);
   const [showSpecialChars, setShowSpecialChars] = useState(false);
@@ -16,26 +17,15 @@ const VirtualKeyboard = ({
   const clearHoldTimer = useRef(null);
   const [clearHolding, setClearHolding] = useState(false);
 
-  // ✅ Spam-proof: throttle updates to provider (GlobalKeyboardProvider) to 1 per frame
-  const rafPending = useRef(false);
-  const lastVal = useRef(initialValue || "");
-
   useEffect(() => {
     setInput(initialValue || "");
-    lastVal.current = initialValue || "";
+    inputRef.current = initialValue || "";
   }, [initialValue]);
 
-  const emitToProvider = (val) => {
-    if (!onKeyPress) return;
-    lastVal.current = val;
-
-    if (rafPending.current) return;
-    rafPending.current = true;
-
-    requestAnimationFrame(() => {
-      rafPending.current = false;
-      onKeyPress(lastVal.current);
-    });
+  const setAndEmit = (nextValue) => {
+    inputRef.current = nextValue;
+    setInput(nextValue);
+    if (onKeyPress) onKeyPress(nextValue);
   };
 
   const keys = {
@@ -66,40 +56,29 @@ const VirtualKeyboard = ({
   };
 
   const pushValue = (newValue) => {
-    setInput(newValue);
-    emitToProvider(newValue);
+    setAndEmit(newValue);
   };
 
   const handleKeyTap = (key) => {
     const processed = applyCase(key);
-
-    setInput((prev) => {
-      const next = prev + processed;
-      emitToProvider(next);
-      return next;
-    });
+    const next = inputRef.current + processed;
+    setAndEmit(next);
 
     if (isShift) setIsShift(false);
   };
 
   const handleBackspace = () => {
-    setInput((prev) => {
-      const next = prev.slice(0, -1);
-      emitToProvider(next);
-      return next;
-    });
+    const next = inputRef.current.slice(0, -1);
+    setAndEmit(next);
   };
 
   const handleSpace = () => {
-    setInput((prev) => {
-      const next = prev + " ";
-      emitToProvider(next);
-      return next;
-    });
+    const next = inputRef.current + " ";
+    setAndEmit(next);
   };
 
   const handleDone = () => {
-    onClose?.(input);
+    onClose?.(inputRef.current);
   };
 
   // ✅ HOLD-TO-CLEAR (700ms) to prevent accidental wiping
@@ -132,6 +111,7 @@ const VirtualKeyboard = ({
 
   return (
     <div
+      data-virtual-keyboard="1"
       className={`fixed bottom-0 left-0 right-0 z-50 ${
         darkMode
           ? "bg-gray-800 border-t-2 border-gray-700"
