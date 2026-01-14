@@ -1,55 +1,104 @@
-# TimberMach
+# TimberMach — Beginner’s Guide
 
-TimberMach is an Electron + React UI for wood test management, backed by a Laravel API and a Python (Flask) computer-vision service.
+This guide walks you through **setting up and running TimberMach from scratch**, even if you’ve never worked with Electron, React, Laravel, or Python services together before. Follow the steps in order. Don’t skip ahead.
 
-This README is Windows-first because the project paths and scripts assume XAMPP on Windows.
+---
 
-## Prerequisites
+## What Is TimberMach?
 
-- Git
-- Node.js 22.12.0 (recommended via nvm-windows)
-- npm 10+
-- Python 3.11+ (for the Flask service)
-- XAMPP (PHP 8.x + MySQL) or a standalone PHP + MySQL setup
-- Composer (Laravel dependencies)
-- Tesseract OCR (required for OCR features)
-- Visual C++ Build Tools (sometimes required for native modules)
+TimberMach is a **desktop application** used to manage and analyze wood testing data.
 
-## Repository Layout
+It is made of four parts working together:
 
-- `src/`: React UI
-- `electron/`: Electron main process
-- `python-backend/`: Flask API for computer vision and OCR
-- `server.js`: Optional serialport WebSocket bridge for hardware
-- Laravel backend lives outside this repo by default:
-  - `C:\xampp\htdocs\TIMBER`
+1. **Electron + React** → the desktop user interface
+2. **Laravel (PHP)** → the main API and database logic
+3. **Python (Flask)** → computer vision and OCR processing
+4. **Optional hardware bridge** → connects sensors via serial ports
 
-## Quick Start (Dev)
+All services run **locally on your computer** during development.
 
-1) Clone this repo
+---
 
-```
+## Before You Start (Important)
+
+This project is **Windows-first**. The instructions assume:
+
+* Windows 10 or 11
+* XAMPP installed in `C:\xampp`
+
+If you are using macOS or Linux, the concepts are the same but paths and commands will differ.
+
+---
+
+## Step 0 — Install Required Software
+
+Install these tools **before cloning the project**.
+
+### Required
+
+* Git
+* Node.js **22.12.0** (use `nvm-windows` if possible)
+* npm **10 or newer**
+* Python **3.11 or newer**
+* XAMPP (PHP 8.x + MySQL)
+* Composer (PHP dependency manager)
+
+### Optional but Recommended
+
+* Tesseract OCR (for OCR features)
+* Visual C++ Build Tools (fixes native module issues on Windows)
+
+After installing, restart your computer to avoid PATH issues.
+
+---
+
+## Step 1 — Clone the Repository
+
+Open **Command Prompt** or **PowerShell** and run:
+
+```bash
 git clone <your-repo-url>
-cd Timbermach
+cd TimberMach
 ```
 
-2) Use the required Node version
+You should now be inside the project folder.
 
-```
+---
+
+## Step 2 — Set the Correct Node.js Version
+
+This project requires **Node.js 22.12.0**.
+
+```bash
 nvm install 22.12.0
 nvm use 22.12.0
 node -v
 ```
 
-3) Install frontend/Electron dependencies
+If `node -v` does not show `v22.12.0`, stop and fix this first.
 
-```
+---
+
+## Step 3 — Install Frontend & Electron Dependencies
+
+From the project root:
+
+```bash
 npm install
 ```
 
-4) Set up the Python backend
+This may take a few minutes. Errors here usually mean:
 
-```
+* Wrong Node version
+* Missing Visual C++ Build Tools
+
+---
+
+## Step 4 — Start the Python Backend (Computer Vision)
+
+Open a **new terminal window**.
+
+```bash
 cd python-backend
 python -m venv .venv
 .venv\Scripts\activate
@@ -57,18 +106,31 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The Python service runs on `http://localhost:5000/` by default.
-
-5) Set up the Laravel backend
-
-The project expects the Laravel API at:
-`C:\xampp\htdocs\TIMBER`
-
-If you clone it elsewhere, update the `dev:laravel`, `dev:fullstack`, and `dev:all` scripts in `package.json`.
-
-Typical Laravel setup:
+If successful, you should see:
 
 ```
+Running on http://localhost:5000/
+```
+
+Leave this terminal open.
+
+---
+
+## Step 5 — Set Up the Laravel Backend (API)
+
+The Laravel backend is expected at:
+
+```
+C:\xampp\htdocs\TIMBER
+```
+
+### If the folder does not exist
+
+Clone or move your Laravel project there.
+
+### Laravel setup
+
+```bash
 cd C:\xampp\htdocs\TIMBER
 composer install
 copy .env.example .env
@@ -77,108 +139,155 @@ php artisan migrate
 php artisan serve --host 127.0.0.1 --port 8000
 ```
 
-If you need seed data, import `timbemach.sql` into your MySQL database, then run migrations.
+If you have existing data, import `timbermach.sql` into MySQL **before** running migrations.
 
-6) Start the full stack
+Leave this terminal open as well.
 
-```
+---
+
+## Step 6 — Start TimberMach (Everything Together)
+
+Return to the **main project folder** and run:
+
+```bash
 npm run dev:fullstack
 ```
 
-Or run everything including Electron:
+This starts:
 
-```
+* React UI
+* Laravel API connection
+* Python service connection
+
+### To include Electron (desktop app):
+
+```bash
 npm run dev:all
 ```
 
-## Running Services Individually
+You should now see the application running.
 
-Frontend (Vite):
-```
-npm run dev
-```
+---
 
-Laravel API:
-```
-npm run dev:laravel
-```
+## Running Individual Services (Advanced)
 
-Python backend:
-```
-npm run dev:python
-```
+Use these only if you know what you’re debugging:
 
-Electron:
-```
-npm run dev:electron
-```
+* React UI only: `npm run dev`
+* Laravel only: `npm run dev:laravel`
+* Python only: `npm run dev:python`
+* Electron only: `npm run dev:electron`
 
-## Environment Variables
+---
 
-Root `.env` is used by Vite:
+## Environment Configuration
 
-```
+The `.env` file in the project root controls service connections:
+
+```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_PYTHON_API_URL=http://localhost:5000/
 VITE_MOISTURE_CAMERA_NAME="Integrated Camera"
 VITE_OCR_INTERVAL_MS=0
 ```
 
-If you change ports or hosts, update `.env` and restart Vite.
+After changing this file, **restart the frontend**.
 
-## Build and Package (Production)
+---
 
-Build the React UI:
-```
+## Building the App (Production)
+
+### Build React UI
+
+```bash
 npm run build
 ```
 
-Build the React UI to the Deployment folder:
-```
+### Build for deployment
+
+```bash
 npm run build:deploy
 ```
 
-Package the Electron app:
-```
+### Package Electron App
+
+```bash
 npm run package
 ```
 
-Packaged output will be placed in:
-`C:\Users\Jhon_Brix\Desktop\PERSONAL-PROJECT\Deployment`
-
-If you want to output builds to a specific folder, configure it in `electron-builder` settings or pass custom paths in your build scripts.
-
-## Tailwind v4 Notes
-
-Tailwind v4 requires `@tailwindcss/postcss` and the v4 import style:
-
-- `postcss.config.js` uses `@tailwindcss/postcss`
-- `src/App.css` includes `@import "tailwindcss";`
-
-If you see layout issues, ensure you are running with the latest dependencies and that Vite is restarted.
-
-## Lockfiles
-
-This repo currently contains both `package-lock.json` and `yarn.lock`. Pick one package manager:
-
-- npm (recommended): keep `package-lock.json` and remove or ignore `yarn.lock`
-- yarn: keep `yarn.lock` and remove or ignore `package-lock.json`
-
-Do not use both at the same time.
-
-## Troubleshooting
-
-- Electron install fails with EBUSY: close any running Electron dev windows and re-run `npm install`.
-- Tailwind errors: ensure `@tailwindcss/postcss` is installed and Vite is restarted.
-- Laravel not found: confirm `C:\xampp\htdocs\TIMBER` exists and update scripts in `package.json` if you moved it.
-- OCR not working: install Tesseract and ensure it is on PATH.
-
-## Optional: Hardware Serial Bridge
-
-`server.js` starts a WebSocket bridge for serial devices. Run it only if you are using the hardware sensors:
+Output location:
 
 ```
+C:\Users\Jhon_Brix\Desktop\PERSONAL-PROJECT\Deployment
+```
+
+---
+
+## Tailwind CSS Notes
+
+This project uses **Tailwind v4**.
+
+Key points:
+
+* Uses `@tailwindcss/postcss`
+* CSS imports via `@import "tailwindcss"`
+
+If styles look broken:
+
+1. Restart Vite
+2. Re-run `npm install`
+
+---
+
+## Package Manager Warning
+
+Use **only one** package manager.
+
+Recommended:
+
+* npm → keep `package-lock.json`
+
+Avoid mixing with Yarn.
+
+---
+
+## Common Problems & Fixes
+
+**Electron install fails (EBUSY)**
+
+* Close all Electron windows
+* Re-run `npm install`
+
+**Laravel not found**
+
+* Verify `C:\xampp\htdocs\TIMBER` exists
+* Update scripts in `package.json` if moved
+
+**OCR not working**
+
+* Install Tesseract
+* Ensure it is in your system PATH
+
+---
+
+## Optional — Hardware Serial Bridge
+
+Only needed if using physical sensors.
+
+```bash
 node server.js
 ```
 
-Adjust COM ports and baud rates inside `server.js` if needed.
+Edit COM ports and baud rates inside `server.js` if required.
+
+---
+
+## Final Notes
+
+This system is modular by design. Once everything runs locally, you can:
+
+* Swap databases
+* Move services to another machine
+* Package it as a standalone desktop app
+
+Take it slow. Once set up, development becomes straightforward.
