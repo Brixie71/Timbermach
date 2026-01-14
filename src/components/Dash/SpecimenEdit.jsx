@@ -1,39 +1,131 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import "./SpecimenEdit.css";
+// Remove this line after switching to Tailwind-only styling:
+// import "./SpecimenEdit.css";
 
-const SaveConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
+const baseShell =
+  "h-full flex flex-col transition-colors";
+const lightShell = "bg-zinc-50 text-zinc-900";
+const darkShell = "bg-zinc-950 text-zinc-100";
+
+const topBar =
+  "sticky top-0 z-10 border-b backdrop-blur supports-[backdrop-filter]:bg-opacity-70";
+const topBarLight = "border-zinc-200 bg-zinc-50/80";
+const topBarDark = "border-zinc-800 bg-zinc-950/70";
+
+const card =
+  "rounded-2xl border shadow-sm";
+const cardLight = "border-zinc-200 bg-white";
+const cardDark = "border-zinc-800 bg-zinc-900/40";
+
+const labelCls = "text-xs font-semibold text-zinc-700";
+const labelClsDark = "text-zinc-200";
+
+const inputBase =
+  "w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2";
+const inputLight =
+  "border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400 focus:border-transparent focus:ring-blue-500";
+const inputDark =
+  "border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 focus:border-transparent focus:ring-blue-400";
+
+const errorText = "text-[11px] text-red-600";
+
+const btn =
+  "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
+const btnGhostLight =
+  "border border-zinc-300 bg-white hover:bg-zinc-50";
+const btnGhostDark =
+  "border border-zinc-700 bg-zinc-900 hover:bg-zinc-800";
+const btnPrimary =
+  "bg-blue-600 text-white hover:bg-blue-700";
+
+function ModalShell({ isOpen, onClose, children }) {
   if (!isOpen) return null;
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Confirm Save</h3>
-        <p>Save changes to this specimen?</p>
-        <div className="modal-actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" onClick={onConfirm}>
-            Save
-          </button>
-        </div>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
       </div>
     </div>
   );
+}
+
+const SaveConfirmationModal = ({ isOpen, onClose, onConfirm, darkMode }) => {
+  return (
+    <ModalShell isOpen={isOpen} onClose={onClose}>
+      <div
+        className={`${
+          darkMode
+            ? "border border-zinc-800 bg-zinc-950 text-zinc-100"
+            : "border border-zinc-200 bg-white text-zinc-900"
+        } rounded-2xl`}
+      >
+        <div className="p-2">
+          <h3 className="text-base font-bold">Confirm Save</h3>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+            Save changes to this specimen?
+          </p>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`${btn} ${
+                darkMode ? btnGhostDark : btnGhostLight
+              }`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className={`${btn} ${btnPrimary}`}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
 };
 
-const SuccessModal = ({ isOpen, onClose }) => {
-  if (!isOpen) return null;
+const SuccessModal = ({ isOpen, onClose, darkMode }) => {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Saved</h3>
-        <p>Specimen updated successfully.</p>
-        <button type="button" onClick={onClose}>
-          OK
-        </button>
+    <ModalShell isOpen={isOpen} onClose={onClose}>
+      <div
+        className={`${
+          darkMode
+            ? "border border-zinc-800 bg-zinc-950 text-zinc-100"
+            : "border border-zinc-200 bg-white text-zinc-900"
+        } rounded-2xl`}
+      >
+        <div className="p-2">
+          <h3 className="text-base font-bold">Saved</h3>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+            Specimen updated successfully.
+          </p>
+
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`${btn} ${btnPrimary}`}
+            >
+              OK
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };
 
@@ -227,182 +319,233 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     onClose?.();
   };
 
-  const fieldClass = `field ${darkMode ? "field-dark" : ""}`;
-  const inputClass = `input ${darkMode ? "input-dark" : ""}`;
+  const shellCls = `${baseShell} ${darkMode ? darkShell : lightShell}`;
+  const barCls = `${topBar} ${darkMode ? topBarDark : topBarLight}`;
+
+  const cardCls = `${card} ${darkMode ? cardDark : cardLight}`;
+
+  const inputCls = `${inputBase} ${darkMode ? inputDark : inputLight}`;
+
+  const labelFinal = `${labelCls} ${darkMode ? labelClsDark : ""}`;
 
   return (
-    <div className={`specimen-edit ${darkMode ? "theme-dark" : "theme-light"}`}>
-      <div className="header">
-        <div>
-          <div className="title">Edit Specimen</div>
-          <div className="subtitle">{initial.specimen_name || "Unknown"} - {dataType}</div>
-        </div>
-        <button type="button" onClick={onClose}>Close</button>
-      </div>
+    <div className={shellCls}>
+      {/* Header */}
+      <div className={barCls}>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-base font-extrabold tracking-tight">
+              Edit Specimen
+            </div>
+            <div className={`mt-0.5 truncate text-xs ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
+              {initial.specimen_name || "Unknown"} — {dataType}
+            </div>
+          </div>
 
-      <div className="content">
-        <div className={fieldClass}>
-          <label>Specimen Name *</label>
-          <input
-            type="text"
-            value={form.specimen_name}
-            onInput={(e) => updateForm({ specimen_name: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-          />
-          {errors.specimen_name ? <div className="error">{errors.specimen_name}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Test Type *</label>
-          <input
-            type="text"
-            value={form.test_type}
-            onInput={(e) => updateForm({ test_type: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-          />
-          {errors.test_type ? <div className="error">{errors.test_type}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Reference Species</label>
-          <select
-            value={form.species_id}
-            onChange={(e) => updateForm({ species_id: e.target.value })}
-            className={inputClass}
+          <button
+            type="button"
+            onClick={onClose}
+            className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}
           >
-            <option value="">{loadingSpecies ? "Loading..." : "No Reference Selected"}</option>
-            {species.map((s) => (
-              <option key={s.id || s.species_id} value={s.id || s.species_id}>
-                {s.common_name || s.species_name || s.botanical_name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={fieldClass}>
-          <label>Base (mm) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.base}
-            onInput={(e) => {
-              const nextBase = e.currentTarget.value;
-              const nextArea = computeArea(nextBase, form.height);
-              updateForm({ base: nextBase, ...(nextArea ? { area: nextArea } : {}) });
-            }}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.base ? <div className="error">{errors.base}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Height (mm) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.height}
-            onInput={(e) => {
-              const nextHeight = e.currentTarget.value;
-              const nextArea = computeArea(form.base, nextHeight);
-              updateForm({ height: nextHeight, ...(nextArea ? { area: nextArea } : {}) });
-            }}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.height ? <div className="error">{errors.height}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Length (mm) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.length}
-            onInput={(e) => updateForm({ length: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.length ? <div className="error">{errors.length}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Area (mm^2) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.area}
-            onInput={(e) => updateForm({ area: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.area ? <div className="error">{errors.area}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Maximum Force (N) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.max_force}
-            onInput={(e) => updateForm({ max_force: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.max_force ? <div className="error">{errors.max_force}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Stress (MPa) *</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.stress}
-            onInput={(e) => updateForm({ stress: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
-          {errors.stress ? <div className="error">{errors.stress}</div> : null}
-        </div>
-
-        <div className={fieldClass}>
-          <label>Moisture Content (%)</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.moisture_content}
-            onInput={(e) => updateForm({ moisture_content: e.currentTarget.value })}
-            className={inputClass}
-            data-keyboard="1"
-            data-keyboard-mode="numeric"
-          />
+            Close
+          </button>
         </div>
       </div>
 
-      <div className="actions">
-        <button type="button" onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" onClick={handleSubmit} disabled={saving}>
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
+      {/* Content */}
+      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-4">
+        <div className={`${cardCls} p-4`}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {/* Specimen Name */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Specimen Name *</label>
+              <input
+                type="text"
+                value={form.specimen_name}
+                onInput={(e) => updateForm({ specimen_name: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+              />
+              {errors.specimen_name ? <div className={errorText}>{errors.specimen_name}</div> : null}
+            </div>
+
+            {/* Test Type */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Test Type *</label>
+              <input
+                type="text"
+                value={form.test_type}
+                onInput={(e) => updateForm({ test_type: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+              />
+              {errors.test_type ? <div className={errorText}>{errors.test_type}</div> : null}
+            </div>
+
+            {/* Reference Species */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Reference Species</label>
+              <select
+                value={form.species_id}
+                onChange={(e) => updateForm({ species_id: e.target.value })}
+                className={`${inputCls} pr-8`}
+              >
+                <option value="">{loadingSpecies ? "Loading..." : "No Reference Selected"}</option>
+                {species.map((s) => (
+                  <option key={s.id || s.species_id} value={s.id || s.species_id}>
+                    {s.common_name || s.species_name || s.botanical_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Base */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Base (mm) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.base}
+                onInput={(e) => {
+                  const nextBase = e.currentTarget.value;
+                  const nextArea = computeArea(nextBase, form.height);
+                  updateForm({ base: nextBase, ...(nextArea ? { area: nextArea } : {}) });
+                }}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.base ? <div className={errorText}>{errors.base}</div> : null}
+            </div>
+
+            {/* Height */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Height (mm) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.height}
+                onInput={(e) => {
+                  const nextHeight = e.currentTarget.value;
+                  const nextArea = computeArea(form.base, nextHeight);
+                  updateForm({ height: nextHeight, ...(nextArea ? { area: nextArea } : {}) });
+                }}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.height ? <div className={errorText}>{errors.height}</div> : null}
+            </div>
+
+            {/* Length */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Length (mm) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.length}
+                onInput={(e) => updateForm({ length: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.length ? <div className={errorText}>{errors.length}</div> : null}
+            </div>
+
+            {/* Area */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Area (mm²) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.area}
+                onInput={(e) => updateForm({ area: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.area ? <div className={errorText}>{errors.area}</div> : null}
+            </div>
+
+            {/* Max Force */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Maximum Force (N) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.max_force}
+                onInput={(e) => updateForm({ max_force: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.max_force ? <div className={errorText}>{errors.max_force}</div> : null}
+            </div>
+
+            {/* Stress */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Stress (MPa) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.stress}
+                onInput={(e) => updateForm({ stress: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.stress ? <div className={errorText}>{errors.stress}</div> : null}
+            </div>
+
+            {/* Moisture */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Moisture Content (%)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.moisture_content}
+                onInput={(e) => updateForm({ moisture_content: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className={`${btn} ${btnPrimary}`}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
       </div>
 
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={confirmSave}
+        darkMode={darkMode}
       />
 
-      <SuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} />
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={handleSuccessClose}
+        darkMode={darkMode}
+      />
     </div>
   );
 };
