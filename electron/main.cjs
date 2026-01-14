@@ -18,16 +18,16 @@ function createWindow() {
     icon: path.join(__dirname, "../public/icon.png"), // Optional: Add your app icon
     webPreferences: {
       // Security settings
-      nodeIntegration: false,
+      nodeIntegration: true,
       contextIsolation: true,
       enableRemoteModule: false,
 
       // ✅ CRITICAL: Disable web security to bypass CORS
-      webSecurity: false,
+      webSecurity: true,
 
       // Additional security
-      allowRunningInsecureContent: false,
-      experimentalFeatures: true,
+      allowRunningInsecureContent: true,
+      experimentalFeatures: false,
     },
 
     // Window styling
