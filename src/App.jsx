@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   IoIosArrowForward,
   IoMdMenu,
@@ -19,10 +19,27 @@ import Settings from "./components/Settings/Settings";
 import "./App.css";
 
 function App() {
+  const THEME_KEY = "timbermach:darkMode";
+  const getInitialDarkMode = () => {
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === "1" || stored === "true") return true;
+      if (stored === "0" || stored === "false") return false;
+    } catch {}
+
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches || false;
+  };
+
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [activeItem, setActiveItem] = useState("dashboard");
   const [showPowerModal, setShowPowerModal] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(getInitialDarkMode);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_KEY, darkMode ? "1" : "0");
+    } catch {}
+  }, [darkMode]);
 
   const toggleNav = () => {
     setIsNavOpen(!isNavOpen);
