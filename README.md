@@ -45,7 +45,6 @@ Install these tools **before cloning the project**.
 
 ### Optional but Recommended
 
-* Tesseract OCR (for OCR features)
 * Visual C++ Build Tools (fixes native module issues on Windows)
 
 After installing, restart your computer to avoid PATH issues.
@@ -262,11 +261,6 @@ Avoid mixing with Yarn.
 
 * Verify `C:\xampp\htdocs\TIMBER` exists
 * Update scripts in `package.json` if moved
-
-**OCR not working**
-
-* Install Tesseract
-* Ensure it is in your system PATH
 
 ---
 
