@@ -3,20 +3,20 @@ import axios from "axios";
 import SpecimenView from "./SpecimenView";
 import DataEdit from "./SpecimenEdit";
 
+// Keep in sync with Header height in App/Header.jsx
+const HEADER_H = 64;
+
 // ============================================================================
 // SMALL HELPERS (compact datetime formatting for 800x480)
 // ============================================================================
-
 function formatDbDateTime(value) {
   if (!value) return "-";
-  // Expected from DB: "2025-12-31 03:56:39" OR ISO string
   const s = String(value).trim();
 
   // If already looks like "YYYY-MM-DD HH:MM:SS"
   const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::\d{2})?/);
   if (m) return `${m[1]} ${m[2]}`;
 
-  // Fallback: try Date parsing
   const d = new Date(s);
   if (!isNaN(d.getTime())) {
     const pad = (n) => String(n).padStart(2, "0");
@@ -34,7 +34,6 @@ function formatDbDateTime(value) {
 // ============================================================================
 // ACTION MODAL
 // ============================================================================
-
 const ActionModal = ({
   isOpen,
   onClose,
@@ -48,42 +47,38 @@ const ActionModal = ({
   return (
     <div
       className="fixed bg-black/60 backdrop-blur-sm flex items-center justify-center z-40"
-      style={{ top: "60px", left: 0, right: 0, bottom: 0 }}
+      style={{ top: `${HEADER_H}px`, left: 0, right: 0, bottom: 0 }}
       onClick={onClose}
     >
       <div
-        className={`shadow-2xl overflow-hidden rounded-lg ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
+        className={[
+          "shadow-2xl overflow-hidden rounded-2xl border",
+          darkMode
+            ? "bg-gray-900/80 border-gray-800 text-gray-100"
+            : "bg-white/80 border-gray-200 text-gray-900",
+          "backdrop-blur supports-[backdrop-filter]:backdrop-blur",
+        ].join(" ")}
         style={{ width: "min(420px, 92vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className={`px-4 py-3 flex justify-between items-center border-b ${
-            darkMode
-              ? "bg-gray-900 border-gray-700"
-              : "bg-gray-50 border-gray-300"
-          }`}
+          className={[
+            "px-4 py-3 flex justify-between items-center border-b",
+            darkMode ? "border-gray-800" : "border-gray-200",
+          ].join(" ")}
         >
-          <h3
-            className={`text-lg font-semibold ${
-              darkMode ? "text-gray-100" : "text-gray-800"
-            }`}
-          >
-            Options
-          </h3>
+          <h3 className="text-base font-semibold">Options</h3>
 
           <button
             onClick={onClose}
-            className={`transition-colors p-1 rounded ${
-              darkMode
-                ? "text-gray-300 hover:text-gray-100 hover:bg-gray-800"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            }`}
+            className={[
+              "transition-colors p-2 rounded-xl",
+              darkMode ? "hover:bg-white/10" : "hover:bg-black/5",
+            ].join(" ")}
             title="Close"
           >
             <svg
-              className="w-6 h-6"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -100,7 +95,7 @@ const ActionModal = ({
 
         {[
           {
-            label: "VIEW",
+            label: "View",
             onClick: () => {
               onView();
               onClose();
@@ -108,7 +103,7 @@ const ActionModal = ({
             danger: false,
           },
           {
-            label: "EDIT",
+            label: "Edit",
             onClick: () => {
               onEdit();
               onClose();
@@ -116,7 +111,7 @@ const ActionModal = ({
             danger: false,
           },
           {
-            label: "DELETE",
+            label: "Delete",
             onClick: () => {
               onDelete();
               onClose();
@@ -127,22 +122,23 @@ const ActionModal = ({
           <button
             key={item.label}
             onClick={item.onClick}
-            className={`w-full px-5 py-4 text-left transition-colors flex items-center justify-between border-b last:border-b-0 ${
+            className={[
+              "w-full px-5 py-4 text-left transition-colors flex items-center justify-between",
+              "border-b last:border-b-0",
+              darkMode ? "border-gray-800" : "border-gray-200",
               item.danger
                 ? darkMode
-                  ? "text-red-300 hover:bg-gray-700 border-gray-700"
-                  : "text-red-600 hover:bg-red-50 border-gray-200"
+                  ? "text-red-200 hover:bg-red-500/10"
+                  : "text-red-600 hover:bg-red-500/10"
                 : darkMode
-                  ? "text-gray-100 hover:bg-gray-700 border-gray-700"
-                  : "text-gray-900 hover:bg-gray-100 border-gray-200"
-            }`}
+                  ? "text-gray-100 hover:bg-white/10"
+                  : "text-gray-900 hover:bg-black/5",
+            ].join(" ")}
           >
-            <span className="text-base font-extrabold tracking-wide">
-              {item.label}
+            <span className="text-sm font-extrabold tracking-wide">
+              {item.label.toUpperCase()}
             </span>
-            <span
-              className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}
-            >
+            <span className={["text-sm", darkMode ? "text-gray-300" : "text-gray-500"].join(" ")}>
               →
             </span>
           </button>
@@ -155,7 +151,6 @@ const ActionModal = ({
 // ============================================================================
 // DELETE CONFIRMATION MODAL
 // ============================================================================
-
 const DeleteConfirmationModal = ({
   isOpen,
   onClose,
@@ -168,37 +163,43 @@ const DeleteConfirmationModal = ({
   return (
     <div
       className="fixed bg-black/60 backdrop-blur-sm flex items-center justify-center z-40 p-3"
-      style={{ top: "60px", left: 0, right: 0, bottom: 0 }}
+      style={{ top: `${HEADER_H}px`, left: 0, right: 0, bottom: 0 }}
+      onClick={onClose}
     >
       <div
-        className={`shadow-2xl rounded-lg overflow-hidden ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
+        className={[
+          "shadow-2xl rounded-2xl overflow-hidden border",
+          darkMode
+            ? "bg-gray-900/80 border-gray-800 text-gray-100"
+            : "bg-white/80 border-gray-200 text-gray-900",
+          "backdrop-blur supports-[backdrop-filter]:backdrop-blur",
+        ].join(" ")}
         style={{ width: "min(520px, 92vw)" }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-gradient-to-r from-red-600 to-red-500 text-white px-5 py-4">
-          <h2 className="text-lg font-bold">Confirm Deletion</h2>
+        <div
+          className={[
+            "px-5 py-4 border-b",
+            darkMode ? "border-gray-800" : "border-gray-200",
+          ].join(" ")}
+        >
+          <h2 className="text-base font-bold">Confirm Deletion</h2>
         </div>
 
         <div className="p-5">
           <div
-            className={`p-4 rounded-lg mb-4 ${
-              darkMode ? "bg-red-900/20" : "bg-red-50"
-            }`}
+            className={[
+              "p-4 rounded-xl mb-4 border",
+              darkMode
+                ? "bg-red-500/10 border-red-500/20"
+                : "bg-red-500/10 border-red-500/20",
+            ].join(" ")}
           >
-            <p
-              className={`text-sm ${
-                darkMode ? "text-gray-200" : "text-gray-800"
-              }`}
-            >
+            <p className="text-sm">
               Are you sure you want to delete{" "}
               <strong>"{itemName}"</strong>?
             </p>
-            <p
-              className={`text-xs mt-1 ${
-                darkMode ? "text-gray-400" : "text-gray-600"
-              }`}
-            >
+            <p className={["text-xs mt-1", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
               This action cannot be undone.
             </p>
           </div>
@@ -206,17 +207,23 @@ const DeleteConfirmationModal = ({
           <div className="flex justify-end gap-3">
             <button
               onClick={onClose}
-              className={`px-4 py-2 text-sm rounded-md transition-colors ${
+              className={[
+                "px-4 py-2 text-sm rounded-xl transition-colors",
                 darkMode
-                  ? "bg-gray-600 text-gray-100 hover:bg-gray-500"
-                  : "bg-gray-200 text-gray-800 hover:bg-gray-300"
-              }`}
+                  ? "bg-white/10 hover:bg-white/15 text-gray-100"
+                  : "bg-black/5 hover:bg-black/10 text-gray-900",
+              ].join(" ")}
             >
               Cancel
             </button>
             <button
               onClick={onConfirm}
-              className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors font-semibold"
+              className={[
+                "px-4 py-2 text-sm rounded-xl transition-colors font-semibold",
+                darkMode
+                  ? "bg-red-500/20 hover:bg-red-500/30 text-red-100"
+                  : "bg-red-600 hover:bg-red-700 text-white",
+              ].join(" ")}
             >
               Delete
             </button>
@@ -230,7 +237,6 @@ const DeleteConfirmationModal = ({
 // ============================================================================
 // COMPACT TABLE (Specimen, Test Type, Dates, Actions)
 // ============================================================================
-
 const CompactDataTable = ({
   data,
   onView,
@@ -254,31 +260,43 @@ const CompactDataTable = ({
     setSelectedItemId(null);
   };
 
+  const thBase = [
+    "text-[12px] sm:text-[13px] font-extrabold text-center px-2 py-2 leading-tight",
+    darkMode ? "text-gray-200" : "text-gray-700",
+  ].join(" ");
+  
+  const tdBase = [
+    "text-[12px] sm:text-[13px] px-2 py-3 leading-tight text-center",
+    darkMode ? "text-gray-100" : "text-gray-900",
+  ].join(" ");
+
+  const borderCls = darkMode ? "border-gray-700" : "border-gray-200";
+  const headBg = darkMode ? "bg-gray-900/80" : "bg-white/80";
+  const cellBg = darkMode ? "bg-gray-900/60" : "bg-white";
+  const hoverBg = darkMode ? "hover:bg-white/5" : "hover:bg-black/5";
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse">
-          <thead className={`sticky top-0 z-10 ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+        <table
+          className={[
+            "w-full border-collapse",
+            darkMode ? "text-gray-100" : "text-gray-900",
+          ].join(" ")}
+        >
+          <thead className={`sticky top-0 z-10 ${headBg} backdrop-blur`}>
             <tr>
               {["Specimen", "Test Type", "Test Date", "Modified"].map((h) => (
                 <th
                   key={h}
-                  className={`border text-[13px] font-extrabold text-center px-2 py-2 leading-tight ${
-                    darkMode
-                      ? "border-gray-600 bg-gray-800 text-gray-200"
-                      : "border-black bg-white text-gray-900"
-                  }`}
+                  className={`border ${borderCls} ${thBase}`}
                 >
                   {h}
                 </th>
               ))}
 
               <th
-                className={`border text-[13px] font-extrabold text-center px-2 py-2 sticky right-0 ${
-                  darkMode
-                    ? "border-gray-600 bg-gray-800 text-gray-200"
-                    : "border-black bg-white text-gray-900"
-                }`}
+                className={`border ${borderCls} ${thBase} sticky right-0 ${headBg} backdrop-blur`}
                 style={{ width: "70px" }}
               >
                 Actions
@@ -293,63 +311,47 @@ const CompactDataTable = ({
                   row.compressive_id || row.shear_id || row.flexure_id || row.ID;
 
                 return (
-                  <tr
-                    key={idx}
-                    className={`transition-colors ${
-                      darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                    }`}
-                  >
-                    {/* Specimen */}
+                  <tr key={idx} className={`transition-colors ${hoverBg}`}>
                     <td
-                      className={`border text-[13px] font-semibold text-center px-2 py-3 leading-tight ${
-                        darkMode ? "border-gray-600 text-gray-100" : "border-black text-gray-900"
-                      }`}
+                      className={`border ${borderCls} ${tdBase} font-semibold`}
                       style={{ minWidth: "160px" }}
                     >
                       {row.specimen_name ?? row["Specimen Name"] ?? "-"}
                     </td>
 
-                    {/* Test Type */}
                     <td
-                      className={`border text-[13px] font-semibold text-center px-2 py-3 leading-tight ${
-                        darkMode ? "border-gray-600 text-gray-100" : "border-black text-gray-900"
-                      }`}
+                      className={`border ${borderCls} ${tdBase} font-semibold`}
                       style={{ minWidth: "140px" }}
                     >
                       {row.test_type ?? row["Test Type"] ?? "-"}
                     </td>
 
-                    {/* Created */}
                     <td
-                      className={`border text-[13px] text-center px-2 py-3 leading-tight ${
-                        darkMode ? "border-gray-600 text-gray-100" : "border-black text-gray-900"
-                      }`}
+                      className={`border ${borderCls} ${tdBase}`}
                       style={{ minWidth: "150px" }}
                     >
                       {formatDbDateTime(row.created_at)}
                     </td>
 
-                    {/* Updated */}
                     <td
-                      className={`border text-[13px] text-center px-2 py-3 leading-tight ${
-                        darkMode ? "border-gray-600 text-gray-100" : "border-black text-gray-900"
-                      }`}
+                      className={`border ${borderCls} ${tdBase}`}
                       style={{ minWidth: "150px" }}
                     >
                       {formatDbDateTime(row.updated_at)}
                     </td>
 
-                    {/* Actions */}
                     <td
-                      className={`border text-center sticky right-0 ${
-                        darkMode ? "border-gray-600 bg-gray-800" : "border-black bg-white"
-                      }`}
+                      className={[
+                        `border ${borderCls} text-center sticky right-0`,
+                        cellBg,
+                      ].join(" ")}
                     >
                       <button
                         onClick={() => handleOpenActionModal(row, itemId)}
-                        className={`w-full h-full px-2 py-3 transition-colors ${
-                          darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"
-                        }`}
+                        className={[
+                          "w-full h-full px-2 py-3 transition-colors",
+                          darkMode ? "hover:bg-white/10" : "hover:bg-black/10",
+                        ].join(" ")}
                         title="Actions"
                       >
                         <svg
@@ -370,10 +372,8 @@ const CompactDataTable = ({
               <tr>
                 <td
                   colSpan={5}
-                  className={`border px-4 py-6 text-center text-sm ${
-                    darkMode
-                      ? "border-gray-600 text-gray-400"
-                      : "border-black text-gray-500"
+                  className={`border ${borderCls} px-4 py-6 text-center text-sm ${
+                    darkMode ? "text-gray-400" : "text-gray-500"
                   }`}
                 >
                   No data available
@@ -399,7 +399,6 @@ const CompactDataTable = ({
 // ============================================================================
 // MAIN DASH
 // ============================================================================
-
 const Dash = ({ darkMode = false }) => {
   const [compressiveData, setCompressiveData] = useState([]);
   const [shearData, setShearData] = useState([]);
@@ -444,7 +443,6 @@ const Dash = ({ darkMode = false }) => {
         axios.get("http://127.0.0.1:8000/api/flexure-data"),
       ]);
 
-      // NOTE: keep raw rows so we can read created_at / updated_at / etc
       setCompressiveData(compRes.data || []);
       setShearData(shearRes.data || []);
       setFlexureData(flexRes.data || []);
@@ -554,16 +552,13 @@ const Dash = ({ darkMode = false }) => {
   return (
     <>
       <div
-        className={`overflow-hidden flex flex-col ${
+        className={`h-full overflow-hidden flex flex-col ${
           darkMode ? "bg-gray-900" : "bg-gray-50"
         }`}
-        style={{
-          height: "calc(100vh - 60px)",
-          fontFamily: "JustSans, system-ui, sans-serif",
-        }}
+        style={{ fontFamily: "JustSans, system-ui, sans-serif" }}
       >
         {/* Tabs */}
-        <div className={`${darkMode ? "border-gray-700" : "border-gray-300"} border-b`}>
+        <div className={`${darkMode ? "border-gray-800" : "border-gray-200"} border-b`}>
           <div className="flex w-full">
             {tabs.map((tab) => {
               const active = activeTab === tab.id;
@@ -571,22 +566,17 @@ const Dash = ({ darkMode = false }) => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 text-center transition-colors border-b-2 ${
+                  className={[
+                    "flex-1 text-center transition-colors border-b-2",
+                    "py-3 text-[13px] font-extrabold tracking-wide",
                     active
                       ? darkMode
-                        ? "text-blue-300 border-blue-400 bg-gray-800"
-                        : "text-black border-black bg-gray-100"
+                        ? "text-blue-300 border-blue-400 bg-white/5"
+                        : "text-gray-900 border-gray-900 bg-black/5"
                       : darkMode
-                        ? "text-gray-300 border-transparent hover:bg-gray-800"
-                        : "text-gray-600 border-transparent hover:bg-gray-50"
-                  }`}
-                  style={{
-                    paddingTop: "10px",
-                    paddingBottom: "10px",
-                    fontSize: "13px",
-                    fontWeight: 800,
-                    letterSpacing: "0.2px",
-                  }}
+                        ? "text-gray-300 border-transparent hover:bg-white/5"
+                        : "text-gray-600 border-transparent hover:bg-black/5",
+                  ].join(" ")}
                 >
                   {tab.label}
                 </button>
@@ -595,7 +585,7 @@ const Dash = ({ darkMode = false }) => {
           </div>
         </div>
 
-        {/* Compact Table */}
+        {/* Table */}
         <div className="flex-1 overflow-hidden">
           <CompactDataTable
             data={activeRows}

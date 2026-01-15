@@ -7,6 +7,7 @@ import {
   IoMdRefresh,
 } from "react-icons/io";
 import GlobalKeyboardProvider from "./components/GlobalKeyboardProvider";
+import Header from "./components/Header/Header";
 import WoodTests from "./components/Tests/WoodTests";
 import MoistureSettings from "./components/Settings/MoistureSettings";
 import MoistureDebug from "./components/Settings/MoistureDebug";
@@ -18,7 +19,45 @@ import Dash from "./components/Dash/Dash";
 import Settings from "./components/Settings/Settings";
 import "./App.css";
 
+function SidebarItem({ darkMode, active, icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "w-full",
+        "flex items-center gap-5",
+        "px-2 py-4 rounded-xl",
+        "text-left",
+        "transition",
+        "active:scale-[0.99]",
+        active
+          ? darkMode
+            ? "bg-white/10 text-white"
+            : "bg-black/5 text-gray-900"
+          : darkMode
+            ? "text-gray-200 hover:bg-white/10"
+            : "text-gray-800 hover:bg-black/5",
+      ].join(" ")}
+    >
+      <span className="w-7 flex items-center justify-center opacity-90">{icon}</span>
+      <span className="text-sm font-bold">{label}</span>
+
+      {/* active indicator */}
+      <span
+        className={[
+          "ml-auto",
+          "h-7 w-2 rounded-full",
+          active ? (darkMode ? "bg-blue-400" : "bg-blue-600") : "opacity-0",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
+
 function App() {
+  
   const THEME_KEY = "timbermach:darkMode";
   const getInitialDarkMode = () => {
     try {
@@ -197,193 +236,136 @@ function App() {
         )}
 
         {/* Top Bar - Clean White/Dark Header */}
-        <div
-          className={`flex items-center px-4 py-3 border-b-2 fixed top-0 left-0 right-0 z-50 ${
-            darkMode
-              ? "bg-gray-800 border-gray-700"
-              : "bg-gray-50 border-gray-300"
-          }`}
-          style={{ height: "60px" }}
-        >
-          <button
-            className={`bg-transparent border-none text-2xl cursor-pointer p-1 transition-colors duration-300 ${
-              darkMode
-                ? "text-gray-200 hover:text-blue-400"
-                : "text-gray-800 hover:text-blue-600"
-            }`}
-            onClick={toggleNav}
-          >
-            <IoMdMenu />
-          </button>
-          <h1
-            className={`ml-3 text-base font-semibold m-0 ${
-              darkMode ? "text-gray-100" : "text-gray-800"
-            }`}
-          >
-            Timber Test Management System
-          </h1>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              className={`bg-transparent border-none text-2xl cursor-pointer p-1 transition-colors duration-300 ${
-                darkMode
-                  ? "text-gray-200 hover:text-yellow-400"
-                  : "text-gray-800 hover:text-yellow-600"
-              }`}
-              onClick={() => setDarkMode(!darkMode)}
-              title={darkMode ? "Light Mode" : "Dark Mode"}
-            >
-              {darkMode ? (
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                  />
-                </svg>
-              )}
-            </button>
-            <button
-              className={`bg-transparent border-none text-2xl cursor-pointer p-1 transition-colors duration-300 ${
-                darkMode
-                  ? "text-gray-200 hover:text-red-500"
-                  : "text-gray-800 hover:text-red-600"
-              }`}
-              onClick={() => setShowPowerModal(true)}
-            >
-              <IoMdPower />
-            </button>
-          </div>
-        </div>
+        <Header
+          darkMode={darkMode}
+          title="Timber Test Management System"
+          subtitle={getPageTitle()}
+          onToggleNav={toggleNav}
+          onToggleTheme={() => setDarkMode(!darkMode)}
+          onPower={() => setShowPowerModal(true)}
+        />
 
         {/* Sidebar */}
-        <div
-          className={`fixed top-0 h-full w-64 shadow-2xl
-            transform transition-transform duration-300 z-50 border-r-2 ${
-              darkMode
-                ? "bg-gray-800 text-gray-100 border-gray-700"
-                : "bg-gray-50 text-gray-800 border-gray-300"
-            } ${isNavOpen ? "translate-x-0" : "-translate-x-64"}`}
+        <aside
+          className={[
+            "fixed z-50",
+            "top-[78px] left-0 bottom-3",         // sits below header; small outer margin
+            "w-[280px]",
+            "rounded-tr-2xl rounded-br-2xl",
+            "border",
+            "transform transition-transform duration-300",
+            isNavOpen ? "translate-x-0" : "-translate-x-[320px]",
+            darkMode
+              ? "bg-gray-900/75 border-gray-800 text-gray-100"
+              : "bg-white/75 border-gray-200 text-gray-900",
+            "backdrop-blur supports-[backdrop-filter]:backdrop-blur",
+          ].join(" ")}
+          aria-label="Sidebar navigation"
         >
+          {/* Sidebar Header */}
           <div
-            className={`flex items-center justify-between p-4 border-b-2 ${
-              darkMode
-                ? "bg-gray-900 border-gray-700"
-                : "bg-gray-100 border-gray-300"
-            }`}
+            className={[
+              "flex items-center justify-between",
+              "px-4 py-3",
+              "border-b",
+              darkMode ? "border-gray-800" : "border-gray-200",
+            ].join(" ")}
           >
-            <span
-              className={`text-xl font-bold ${darkMode ? "text-gray-100" : "text-gray-800"}`}
-            >
-              Menu
-            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tracking-wide">Menu</div>
+              <div className={["text-xs truncate", darkMode ? "text-gray-300" : "text-gray-500"].join(" ")}>
+                {getPageTitle()}
+              </div>
+            </div>
+
             <button
-              className={`text-2xl p-2 rounded-full transform transition-transform duration-300 ${
-                darkMode
-                  ? "text-gray-100 hover:text-blue-400"
-                  : "text-gray-800 hover:text-blue-600"
-              }`}
-              aria-label="Toggle Navigation"
+              type="button"
               onClick={toggleNav}
+              aria-label="Close menu"
+              className={[
+                "h-9 w-9 rounded-xl",
+                "inline-flex items-center justify-center",
+                "transition active:scale-[0.98]",
+                darkMode ? "hover:bg-white/10" : "hover:bg-black/5",
+              ].join(" ")}
             >
-              <IoIosArrowForward
-                className={`${isNavOpen ? "rotate-180" : ""}`}
-              />
+              <IoIosArrowForward className="text-xl rotate-180" />
             </button>
           </div>
-          <nav>
-            <ul className="list-none p-0 m-0">
-              <li>
-                <a
-                  href="#dashboard"
-                  className={`flex items-center px-6 py-4 transition-all duration-300 border-b ${
-                    darkMode ? "border-gray-700" : "border-gray-200"
-                  } ${
-                    activeItem === "dashboard"
-                      ? darkMode
-                        ? "text-blue-400 bg-gray-700 font-semibold"
-                        : "text-blue-600 bg-blue-50 font-semibold"
-                      : darkMode
-                        ? "text-gray-100 hover:bg-gray-700"
-                        : "text-gray-800 hover:bg-gray-100"
-                  }`}
-                  onClick={() => {
-                    setActiveItem("dashboard");
-                    closeNav();
-                  }}
-                >
-                  <span className="mr-3 text-xl">📊</span>
-                  Dashboard
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#strength-test"
-                  className={`flex items-center px-6 py-4 transition-all duration-300 border-b ${
-                    darkMode ? "border-gray-700" : "border-gray-200"
-                  } ${
-                    activeItem === "strength-test"
-                      ? darkMode
-                        ? "text-blue-400 bg-gray-700 font-semibold"
-                        : "text-blue-600 bg-blue-50 font-semibold"
-                      : darkMode
-                        ? "text-gray-100 hover:bg-gray-700"
-                        : "text-gray-800 hover:bg-gray-100"
-                  }`}
-                  onClick={() => {
-                    setActiveItem("strength-test");
-                    closeNav();
-                  }}
-                >
-                  <span className="mr-3 text-xl">🔬</span>
-                  Strength Test
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#settings"
-                  className={`flex items-center px-6 py-4 transition-all duration-300 border-b ${
-                    darkMode ? "border-gray-700" : "border-gray-200"
-                  } ${
-                    activeItem === "settings"
-                      ? darkMode
-                        ? "text-blue-400 bg-gray-700 font-semibold"
-                        : "text-blue-600 bg-blue-50 font-semibold"
-                      : darkMode
-                        ? "text-gray-100 hover:bg-gray-700"
-                        : "text-gray-800 hover:bg-gray-100"
-                  }`}
-                  onClick={() => {
-                    setActiveItem("settings");
-                    closeNav();
-                  }}
-                >
-                  <IoMdCog className="mr-3 text-xl" />
-                  Settings
-                </a>
-              </li>
-            </ul>
+
+          {/* Nav Items */}
+          <nav className="p-2">
+            <SidebarItem
+              darkMode={darkMode}
+              active={activeItem === "dashboard"}
+              icon={<span className="text-lg">📊</span>}
+              label="Dashboard"
+              onClick={() => {
+                setActiveItem("dashboard");
+                closeNav();
+              }}
+            />
+
+            <SidebarItem
+              darkMode={darkMode}
+              active={activeItem === "strength-test"}
+              icon={<span className="text-lg">🔬</span>}
+              label="Strength Test"
+              onClick={() => {
+                setActiveItem("strength-test");
+                closeNav();
+              }}
+            />
+
+            <div
+              className={[
+                "my-2 mx-2",
+                "h-px",
+                darkMode ? "bg-gray-800" : "bg-gray-200",
+              ].join(" ")}
+            />
+
+            <SidebarItem
+              darkMode={darkMode}
+              active={activeItem === "settings"}
+              icon={<IoMdCog className="text-xl" />}
+              label="Settings"
+              onClick={() => {
+                setActiveItem("settings");
+                closeNav();
+              }}
+            />
           </nav>
-        </div>
+
+          {/* Footer */}
+          <div
+            className={[
+              "mt-auto",
+              "p-3",
+              "border-t",
+              darkMode ? "border-gray-800" : "border-gray-200",
+            ].join(" ")}
+          >
+            <button
+              type="button"
+              onClick={() => setShowPowerModal(true)}
+              className={[
+                "w-full",
+                "flex items-center justify-center gap-2",
+                "h-11 rounded-xl",
+                "font-semibold text-sm",
+                "transition active:scale-[0.98]",
+                darkMode
+                  ? "bg-red-500/15 text-red-200 hover:bg-red-500/25"
+                  : "bg-red-500/10 text-red-600 hover:bg-red-500/15",
+              ].join(" ")}
+            >
+              <IoMdPower className="text-xl" />
+              Power Off
+            </button>
+          </div>
+        </aside>
+
 
         {/* Main Content - No Padding */}
         <div className="absolute top-[60px] left-0 right-0 bottom-0 overflow-auto">

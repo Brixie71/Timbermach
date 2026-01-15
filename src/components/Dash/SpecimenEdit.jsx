@@ -1,28 +1,26 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-// Remove this line after switching to Tailwind-only styling:
-// import "./SpecimenEdit.css";
 
-const baseShell =
-  "h-full flex flex-col transition-colors";
+const CONTACT_W_MM = 76.2;
+const CONTACT_H_MM = 76.2;
+const CONTACT_AREA_MM2 = CONTACT_W_MM * CONTACT_H_MM;
+
+const baseShell = "h-full flex flex-col transition-colors";
 const lightShell = "bg-zinc-50 text-zinc-900";
 const darkShell = "bg-zinc-950 text-zinc-100";
 
-const topBar =
-  "sticky top-0 z-10 border-b backdrop-blur supports-[backdrop-filter]:bg-opacity-70";
+const topBar = "sticky top-0 z-10 border-b backdrop-blur supports-[backdrop-filter]:bg-opacity-70";
 const topBarLight = "border-zinc-200 bg-zinc-50/80";
 const topBarDark = "border-zinc-800 bg-zinc-950/70";
 
-const card =
-  "rounded-2xl border shadow-sm";
+const card = "rounded-2xl border shadow-sm";
 const cardLight = "border-zinc-200 bg-white";
 const cardDark = "border-zinc-800 bg-zinc-900/40";
 
 const labelCls = "text-xs font-semibold text-zinc-700";
 const labelClsDark = "text-zinc-200";
 
-const inputBase =
-  "w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2";
+const inputBase = "w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2";
 const inputLight =
   "border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400 focus:border-transparent focus:ring-blue-500";
 const inputDark =
@@ -32,12 +30,14 @@ const errorText = "text-[11px] text-red-600";
 
 const btn =
   "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
-const btnGhostLight =
-  "border border-zinc-300 bg-white hover:bg-zinc-50";
-const btnGhostDark =
-  "border border-zinc-700 bg-zinc-900 hover:bg-zinc-800";
-const btnPrimary =
-  "bg-blue-600 text-white hover:bg-blue-700";
+const btnGhostLight = "border border-zinc-300 bg-white hover:bg-zinc-50";
+const btnGhostDark = "border border-zinc-700 bg-zinc-900 hover:bg-zinc-800";
+const btnPrimary = "bg-blue-600 text-white hover:bg-blue-700";
+
+function safeNum(v, fallback = NaN) {
+  const n = Number.parseFloat(String(v ?? ""));
+  return Number.isFinite(n) ? n : fallback;
+}
 
 function ModalShell({ isOpen, onClose, children }) {
   if (!isOpen) return null;
@@ -63,32 +63,18 @@ const SaveConfirmationModal = ({ isOpen, onClose, onConfirm, darkMode }) => {
     <ModalShell isOpen={isOpen} onClose={onClose}>
       <div
         className={`${
-          darkMode
-            ? "border border-zinc-800 bg-zinc-950 text-zinc-100"
-            : "border border-zinc-200 bg-white text-zinc-900"
+          darkMode ? "border border-zinc-800 bg-zinc-950 text-zinc-100" : "border border-zinc-200 bg-white text-zinc-900"
         } rounded-2xl`}
       >
         <div className="p-2">
           <h3 className="text-base font-bold">Confirm Save</h3>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Save changes to this specimen?
-          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Save changes to this specimen?</p>
 
           <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${btn} ${
-                darkMode ? btnGhostDark : btnGhostLight
-              }`}
-            >
+            <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              className={`${btn} ${btnPrimary}`}
-            >
+            <button type="button" onClick={onConfirm} className={`${btn} ${btnPrimary}`}>
               Save
             </button>
           </div>
@@ -103,23 +89,15 @@ const SuccessModal = ({ isOpen, onClose, darkMode }) => {
     <ModalShell isOpen={isOpen} onClose={onClose}>
       <div
         className={`${
-          darkMode
-            ? "border border-zinc-800 bg-zinc-950 text-zinc-100"
-            : "border border-zinc-200 bg-white text-zinc-900"
+          darkMode ? "border border-zinc-800 bg-zinc-950 text-zinc-100" : "border border-zinc-200 bg-white text-zinc-900"
         } rounded-2xl`}
       >
         <div className="p-2">
           <h3 className="text-base font-bold">Saved</h3>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-            Specimen updated successfully.
-          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Specimen updated successfully.</p>
 
           <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${btn} ${btnPrimary}`}
-            >
+            <button type="button" onClick={onClose} className={`${btn} ${btnPrimary}`}>
               OK
             </button>
           </div>
@@ -181,7 +159,13 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       height: v("height", "Height"),
       length: v("length", "Length"),
       area: v("area", "Area"),
+
+      // NEW: pressure_bar is primary source now
+      pressure_bar: v("pressure_bar", "pressure"),
+
+      // keep for backwards compat (fallback)
       max_force: v("max_force", "Maximum Force"),
+
       stress: v("stress", "Stress"),
       moisture_content: v("moisture_content", "Moisture Content"),
       species_id: data?.species_id ?? "",
@@ -198,7 +182,10 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       height: draft?.height ?? initial.height,
       length: draft?.length ?? initial.length,
       area: draft?.area ?? initial.area,
+
+      pressure_bar: draft?.pressure_bar ?? initial.pressure_bar,
       max_force: draft?.max_force ?? initial.max_force,
+
       stress: draft?.stress ?? initial.stress,
       moisture_content: draft?.moisture_content ?? initial.moisture_content,
       species_id: draft?.species_id ?? initial.species_id,
@@ -233,19 +220,28 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
   }, []);
 
   const computeArea = (baseValue, heightValue) => {
-    const b = parseFloat(String(baseValue ?? ""));
-    const h = parseFloat(String(heightValue ?? ""));
-    if (!Number.isFinite(b) || b <= 0 || !Number.isFinite(h) || h <= 0) {
-      return null;
-    }
-    return (b * h).toString();
+    const b = safeNum(baseValue, NaN);
+    const h = safeNum(heightValue, NaN);
+    if (!Number.isFinite(b) || b <= 0 || !Number.isFinite(h) || h <= 0) return null;
+    return String(b * h);
   };
 
   const readText = (value) => String(value ?? "");
   const readNum = (value) => {
-    const n = parseFloat(readText(value));
+    const n = safeNum(value, NaN);
     return Number.isFinite(n) ? n : NaN;
   };
+
+  const derived = useMemo(() => {
+    const bar = safeNum(form.pressure_bar, NaN);
+    if (Number.isFinite(bar) && bar > 0) {
+      const mpa = bar * 0.1;
+      const pN = mpa * CONTACT_AREA_MM2;
+      return { bar, mpa, pN, used: "pressure_bar" };
+    }
+    const fallbackN = safeNum(form.max_force, 0);
+    return { bar: 0, mpa: 0, pN: fallbackN, used: "max_force" };
+  }, [form.pressure_bar, form.max_force]);
 
   const validate = () => {
     const nextErrors = {};
@@ -261,8 +257,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       ["height", form.height],
       ["length", form.length],
       ["area", form.area],
-      ["max_force", form.max_force],
-      ["stress", form.stress],
+      ["pressure_bar", form.pressure_bar], // NEW required now
     ];
 
     for (const [key, value] of numericFields) {
@@ -270,6 +265,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       if (!Number.isFinite(n) || n <= 0) nextErrors[key] = "Must be a positive number";
     }
 
+    // stress/max_force are no longer mandatory (we compute from pressure_bar)
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -293,16 +289,22 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
         height: readNum(form.height),
         length: readNum(form.length),
         area: readNum(form.area),
-        max_force: readNum(form.max_force),
-        stress: readNum(form.stress),
-        moisture_content:
-          readText(form.moisture_content).trim() === ""
-            ? null
-            : readNum(form.moisture_content),
+
+        // ✅ store bar in DB
+        pressure_bar: readNum(form.pressure_bar),
+
+        // keep max_force for compatibility (optional)
+        max_force: Number.isFinite(readNum(form.max_force)) ? readNum(form.max_force) : null,
+
+        // stress is optional (your UI computes it anyway)
+        stress: Number.isFinite(readNum(form.stress)) ? readNum(form.stress) : null,
+
+        moisture_content: readText(form.moisture_content).trim() === "" ? null : readNum(form.moisture_content),
         species_id: form.species_id ? parseInt(form.species_id, 10) : null,
       };
 
       await axios.put(`http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`, payload);
+
       clearDraft();
       setShowSuccessModal(true);
     } catch (err) {
@@ -323,9 +325,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
   const barCls = `${topBar} ${darkMode ? topBarDark : topBarLight}`;
 
   const cardCls = `${card} ${darkMode ? cardDark : cardLight}`;
-
   const inputCls = `${inputBase} ${darkMode ? inputDark : inputLight}`;
-
   const labelFinal = `${labelCls} ${darkMode ? labelClsDark : ""}`;
 
   return (
@@ -334,19 +334,13 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       <div className={barCls}>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="min-w-0">
-            <div className="text-base font-extrabold tracking-tight">
-              Edit Specimen
-            </div>
+            <div className="text-base font-extrabold tracking-tight">Edit Specimen</div>
             <div className={`mt-0.5 truncate text-xs ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
               {initial.specimen_name || "Unknown"} — {dataType}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}
-          >
+          <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
             Close
           </button>
         </div>
@@ -467,9 +461,37 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
               {errors.area ? <div className={errorText}>{errors.area}</div> : null}
             </div>
 
-            {/* Max Force */}
+            {/* ✅ Pressure Bar */}
             <div className="space-y-1.5">
-              <label className={labelFinal}>Maximum Force (N) *</label>
+              <label className={labelFinal}>Pressure (bar) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.pressure_bar}
+                onInput={(e) => updateForm({ pressure_bar: e.currentTarget.value })}
+                className={inputCls}
+                data-keyboard="1"
+                data-keyboard-mode="numeric"
+              />
+              {errors.pressure_bar ? <div className={errorText}>{errors.pressure_bar}</div> : null}
+
+              <div className={`text-[11px] mt-1 ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
+                Derived: MPa = bar × 0.1 → <b>{derived.mpa.toFixed(2)} MPa</b>
+              </div>
+            </div>
+
+            {/* ✅ Derived point load */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Derived Point Load (P) (N)</label>
+              <input type="text" value={derived.pN.toFixed(2)} className={inputCls} disabled />
+              <div className={`text-[11px] ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
+                P = MPa × A_contact ({CONTACT_W_MM}×{CONTACT_H_MM}={CONTACT_AREA_MM2.toFixed(2)} mm²)
+              </div>
+            </div>
+
+            {/* Legacy Max Force (optional fallback) */}
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Max Force (legacy fallback) (N)</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -479,12 +501,14 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                 data-keyboard="1"
                 data-keyboard-mode="numeric"
               />
-              {errors.max_force ? <div className={errorText}>{errors.max_force}</div> : null}
+              <div className={`text-[11px] ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
+                Used only if pressure_bar is missing.
+              </div>
             </div>
 
-            {/* Stress */}
+            {/* Stress (optional) */}
             <div className="space-y-1.5">
-              <label className={labelFinal}>Stress (MPa) *</label>
+              <label className={labelFinal}>Stress (MPa) (optional)</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -494,7 +518,6 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
                 data-keyboard="1"
                 data-keyboard-mode="numeric"
               />
-              {errors.stress ? <div className={errorText}>{errors.stress}</div> : null}
             </div>
 
             {/* Moisture */}
@@ -514,20 +537,11 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
 
           {/* Actions */}
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}
-            >
+            <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
               Cancel
             </button>
 
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={saving}
-              className={`${btn} ${btnPrimary}`}
-            >
+            <button type="button" onClick={handleSubmit} disabled={saving} className={`${btn} ${btnPrimary}`}>
               {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -541,11 +555,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
         darkMode={darkMode}
       />
 
-      <SuccessModal
-        isOpen={showSuccessModal}
-        onClose={handleSuccessClose}
-        darkMode={darkMode}
-      />
+      <SuccessModal isOpen={showSuccessModal} onClose={handleSuccessClose} darkMode={darkMode} />
     </div>
   );
 };
