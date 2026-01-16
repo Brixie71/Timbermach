@@ -36,15 +36,12 @@ const WoodTests = ({ darkMode = false }) => {
 
   // Updated with correct image paths from your code
   const tests = [
-    {
-      title: "COMPRESSIVE TEST",
-      image: "Cards/Strength Test/Compressive_Card.png",
-    },
+    { title: "COMPRESSIVE TEST", image: "Cards/Strength Test/Compressive_Card.png" },
     { title: "SHEAR TEST", image: "Cards/Strength Test/Shear_Card.png" },
     { title: "FLEXURE TEST", image: "Cards/Strength Test/Flexure_Card.png" },
   ];
 
-  // Add touch event handlers after the goToNextCard function (around line 80)
+  // Touch handlers
   const handleTouchStart = (e) => {
     if (isAnimating || isTransitioning) return;
     setIsDragging(true);
@@ -58,7 +55,6 @@ const WoodTests = ({ darkMode = false }) => {
     const currentX = e.touches[0].clientX;
     const diff = currentX - dragStart;
 
-    // Prevent dragging if at boundaries
     if (
       (currentCardIndex === 0 && diff > 0) ||
       (currentCardIndex === tests.length - 1 && diff < 0)
@@ -74,15 +70,14 @@ const WoodTests = ({ darkMode = false }) => {
 
     const currentOffset = dragOffset;
     setIsDragging(false);
-    const threshold = window.innerWidth * 0.25; // 25% of screen width
+
+    const threshold = window.innerWidth * 0.25;
 
     if (Math.abs(currentOffset) > threshold) {
-      // Swipe detected - continue the animation from current position
       setIsTransitioning(true);
       setIsAnimating(true);
 
       if (currentOffset < 0 && currentCardIndex < tests.length - 1) {
-        // Swiped left - UPDATE INDEX IMMEDIATELY
         audio.play();
         setCurrentCardIndex((prev) => prev + 1);
         setSlideDirection("slide-in-from-right");
@@ -94,7 +89,6 @@ const WoodTests = ({ darkMode = false }) => {
           setIsTransitioning(false);
         }, 200);
       } else if (currentOffset > 0 && currentCardIndex > 0) {
-        // Swiped right - UPDATE INDEX IMMEDIATELY
         audio.play();
         setCurrentCardIndex((prev) => prev - 1);
         setSlideDirection("slide-in-from-left");
@@ -106,24 +100,20 @@ const WoodTests = ({ darkMode = false }) => {
           setIsTransitioning(false);
         }, 200);
       } else {
-        // Snap back
         setIsTransitioning(false);
         setIsAnimating(false);
         setDragOffset(0);
       }
     } else {
-      // Snap back - didn't reach threshold
       setIsTransitioning(true);
       setTimeout(() => {
         setDragOffset(0);
-        setTimeout(() => {
-          setIsTransitioning(false);
-        }, 200);
+        setTimeout(() => setIsTransitioning(false), 200);
       }, 0);
     }
   };
 
-  // Navigation functions - NO LOOPS
+  // Navigation functions
   const goToPreviousCard = () => {
     if (currentCardIndex > 0 && !isAnimating) {
       audio.play();
@@ -183,14 +173,8 @@ const WoodTests = ({ darkMode = false }) => {
   };
 
   const isFormValid = () => {
-    if (!specimenName || specimenName.trim() === "") {
-      return false;
-    }
-
-    if (selectedTest === "COMPRESSIVE TEST" || selectedTest === "SHEAR TEST") {
-      return subType !== "";
-    }
-
+    if (!specimenName || specimenName.trim() === "") return false;
+    if (selectedTest === "COMPRESSIVE TEST" || selectedTest === "SHEAR TEST") return subType !== "";
     return true;
   };
 
@@ -202,7 +186,7 @@ const WoodTests = ({ darkMode = false }) => {
   const determineTestSequence = () => {
     const sequence = [];
     if (includeMoisture) sequence.push("moistureTest");
-    sequence.push("dimensionTest"); // Always include measurement
+    sequence.push("dimensionTest");
     sequence.push("mainTest");
     sequence.push("summary");
     return sequence;
@@ -226,16 +210,11 @@ const WoodTests = ({ darkMode = false }) => {
     setTestStarted(true);
 
     const sequence = determineTestSequence();
-    if (sequence.length > 0) {
-      setCurrentTestStage(sequence[0]);
-    }
+    if (sequence.length > 0) setCurrentTestStage(sequence[0]);
   };
 
   const handleMoistureComplete = (data) => {
-    setTestData((prev) => ({
-      ...prev,
-      moistureData: data,
-    }));
+    setTestData((prev) => ({ ...prev, moistureData: data }));
 
     const sequence = determineTestSequence();
     const currentIndex = sequence.indexOf("moistureTest");
@@ -244,21 +223,15 @@ const WoodTests = ({ darkMode = false }) => {
     }
   };
 
-  const handleRetakeMoisture = () => {
-    setCurrentTestStage("moistureTest");
-  };
+  const handleRetakeMoisture = () => setCurrentTestStage("moistureTest");
 
   const handleMoisturePrevious = () => {
-    // Go back to selection screen
     setTestStarted(false);
     setCurrentTestStage("selection");
   };
 
   const handleMeasurementComplete = (data) => {
-    setTestData((prev) => ({
-      ...prev,
-      measurementData: data,
-    }));
+    setTestData((prev) => ({ ...prev, measurementData: data }));
 
     const sequence = determineTestSequence();
     const currentIndex = sequence.indexOf("dimensionTest");
@@ -267,46 +240,32 @@ const WoodTests = ({ darkMode = false }) => {
     }
   };
 
-  const handleRetakeMeasurement = () => {
-    setCurrentTestStage("dimensionTest");
-  };
+  const handleRetakeMeasurement = () => setCurrentTestStage("dimensionTest");
 
   const handleMeasurementPrevious = () => {
     const sequence = determineTestSequence();
     const currentIndex = sequence.indexOf("dimensionTest");
 
-    // Go back to previous stage in sequence
-    if (currentIndex > 0) {
-      setCurrentTestStage(sequence[currentIndex - 1]);
-    } else {
-      // If first stage, go back to selection
+    if (currentIndex > 0) setCurrentTestStage(sequence[currentIndex - 1]);
+    else {
       setTestStarted(false);
       setCurrentTestStage("selection");
     }
   };
 
   const handleTestComplete = (data) => {
-    setTestData((prev) => ({
-      ...prev,
-      strengthData: data,
-    }));
-
+    setTestData((prev) => ({ ...prev, strengthData: data }));
     setCurrentTestStage("summary");
   };
 
-  const handleRetakeStrength = () => {
-    setCurrentTestStage("mainTest");
-  };
+  const handleRetakeStrength = () => setCurrentTestStage("mainTest");
 
   const handleStrengthPrevious = () => {
     const sequence = determineTestSequence();
     const currentIndex = sequence.indexOf("mainTest");
 
-    // Go back to previous stage in sequence
-    if (currentIndex > 0) {
-      setCurrentTestStage(sequence[currentIndex - 1]);
-    } else {
-      // If first stage, go back to selection
+    if (currentIndex > 0) setCurrentTestStage(sequence[currentIndex - 1]);
+    else {
       setTestStarted(false);
       setCurrentTestStage("selection");
     }
@@ -384,20 +343,13 @@ const WoodTests = ({ darkMode = false }) => {
     }
   }
 
-  // Main selection UI
+  // Main selection UI (UNCHANGED from your reverted version)
   if (!selectedTest) {
     return (
-      <div
-        className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-white"}`}
-      >
-        {/* Card Container - Centered, Full Width */}
+      <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-white"}`}>
         <div className="flex-1 flex items-start justify-center px-0 pt-0">
           <div
-            onClick={() =>
-              !isDragging &&
-              !isAnimating &&
-              handleTestClick(tests[currentCardIndex].title)
-            }
+            onClick={() => !isDragging && !isAnimating && handleTestClick(tests[currentCardIndex].title)}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -408,10 +360,7 @@ const WoodTests = ({ darkMode = false }) => {
             } ${slideDirection}`}
             style={{
               height: "380px",
-              transform:
-                isDragging && dragOffset !== 0
-                  ? `translateX(${dragOffset}px)`
-                  : undefined,
+              transform: isDragging && dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
               opacity:
                 isDragging && dragOffset !== 0
                   ? Math.max(0.5, 1 - Math.abs(dragOffset) / window.innerWidth)
@@ -419,7 +368,6 @@ const WoodTests = ({ darkMode = false }) => {
               transition: isDragging ? "none" : undefined,
             }}
           >
-            {/* Image Area - Top Part */}
             <div
               className={`flex-1 flex items-center justify-center overflow-hidden ${
                 darkMode ? "bg-gray-800" : "bg-gray-200"
@@ -429,16 +377,10 @@ const WoodTests = ({ darkMode = false }) => {
                 src={tests[currentCardIndex].image}
                 alt={tests[currentCardIndex].title}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  console.error(
-                    "Image failed to load:",
-                    tests[currentCardIndex].image,
-                  );
-                }}
+                onError={() => console.error("Image failed to load:", tests[currentCardIndex].image)}
               />
             </div>
 
-            {/* Label - Bottom Part */}
             <div
               className={`h-[60px] border-t-2 flex items-center justify-center ${
                 darkMode
@@ -446,14 +388,11 @@ const WoodTests = ({ darkMode = false }) => {
                   : "bg-gray-300 border-black text-gray-900"
               }`}
             >
-              <h2 className="text-2xl font-bold tracking-wide">
-                {tests[currentCardIndex].title}
-              </h2>
+              <h2 className="text-2xl font-bold tracking-wide">{tests[currentCardIndex].title}</h2>
             </div>
           </div>
         </div>
 
-        {/* Navigation Dots - Below Card */}
         <div className="flex items-center justify-center gap-3 pb-4">
           {tests.map((_, index) => (
             <button
@@ -463,28 +402,21 @@ const WoodTests = ({ darkMode = false }) => {
                   audio.play();
                   setIsAnimating(true);
 
-                  // Going forward (right to left)
                   if (index > currentCardIndex) {
                     setSlideDirection("slide-out-left");
-
                     setTimeout(() => {
                       setCurrentCardIndex(index);
                       setSlideDirection("slide-in-from-right");
-
                       setTimeout(() => {
                         setSlideDirection("");
                         setIsAnimating(false);
                       }, 300);
                     }, 300);
-                  }
-                  // Going backward (left to right)
-                  else {
+                  } else {
                     setSlideDirection("slide-out-right");
-
                     setTimeout(() => {
                       setCurrentCardIndex(index);
                       setSlideDirection("slide-in-from-left");
-
                       setTimeout(() => {
                         setSlideDirection("");
                         setIsAnimating(false);
@@ -510,51 +442,96 @@ const WoodTests = ({ darkMode = false }) => {
     );
   }
 
-  // Test configuration screen
-  // Test configuration screen
-  return (
-    <div
-      className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-white"}`}
+  // ============================
+  // CONFIG SCREEN (IMPROVED ONLY)
+  // ============================
+  const border = darkMode ? "border-gray-800" : "border-gray-200";
+  const surface = darkMode ? "bg-gray-900" : "bg-white";
+  const surface2 = darkMode ? "bg-gray-900/70" : "bg-gray-50";
+  const text = darkMode ? "text-gray-100" : "text-gray-900";
+  const subText = darkMode ? "text-gray-300" : "text-gray-600";
+  const softBtn = darkMode ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10";
+
+  const Btn = ({ active, onClick, children, className = "" }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "flex-1 w-full px-3",
+        "text-[18px] font-extrabold tracking-wide",
+        "transition active:scale-[0.99]",
+        active
+          ? darkMode
+            ? "bg-blue-600 text-white"
+            : "bg-blue-600 text-white"
+          : `${softBtn} ${text}`,
+        className,
+      ].join(" ")}
     >
-      {/* Header - Increased font size */}
-      <div
-        className={`flex items-center justify-between px-2 py-1 border-b-2 ${
-          darkMode
-            ? "border-gray-700 bg-gray-800 text-gray-100"
-            : "border-black bg-gray-100 text-gray-900"
-        }`}
-      >
-        <h2 className="text-[17px] font-bold">{selectedTest}</h2>
+      {children}
+    </button>
+  );
+
+  const RowItem = ({ children, right }) => (
+    <div
+      className={[
+        "flex-1 flex items-center px-3",
+        darkMode ? "bg-white/5" : "bg-gray-100",
+        "border-b",
+        border,
+      ].join(" ")}
+    >
+      <div className={["text-[18px] font-semibold", text].join(" ")}>{children}</div>
+      {right ? <div className="ml-auto text-[13px] font-bold text-emerald-500">{right}</div> : null}
+    </div>
+  );
+
+  const showSubType = selectedTest === "COMPRESSIVE TEST" || selectedTest === "SHEAR TEST";
+
+  return (
+    <div className={`flex flex-col h-full ${surface}`}>
+      {/* Header (cleaner, compact) */}
+      <div className={["h-12 flex items-center justify-between px-3 border-b", border, surface2].join(" ")}>
+        <div className="min-w-0">
+          <div className={["text-[12px] font-extrabold tracking-widest uppercase", subText].join(" ")}>
+            Configure
+          </div>
+          <div className={["text-[16px] font-extrabold truncate", text].join(" ")}>
+            {selectedTest}
+          </div>
+        </div>
+
         <button
           onClick={handleClose}
-          className={`text-[26px] font-bold transition-colors ${
-            darkMode
-              ? "text-gray-200 hover:text-red-400"
-              : "text-gray-900 hover:text-red-600"
-          }`}
+          className={[
+            "h-9 w-9 rounded-xl inline-flex items-center justify-center",
+            "transition active:scale-[0.98]",
+            darkMode ? "hover:bg-white/10" : "hover:bg-black/5",
+            text,
+          ].join(" ")}
+          aria-label="Close"
+          title="Close"
         >
-          ×
+          <span className="text-[18px] font-black leading-none">×</span>
         </button>
       </div>
 
-      {/* Configuration Form - FLEX COLUMN */}
+      {/* Body */}
       <div className="flex-1 flex flex-col">
-        {/* Specimen Name Input - Increased font size */}
-        <div className="border-b-2 border-gray-300 p-2">
-          <label
-            className={`block text-[13px] font-semibold mb-1 ${
-              darkMode ? "text-gray-300" : "text-gray-900"
-            }`}
-          >
-            Specimen Name <span className="text-red-500">*</span>
-          </label>
+        {/* Specimen Name */}
+        <div className={["px-3 py-2 border-b", border].join(" ")}>
+          <div className="flex items-center justify-between mb-1">
+            <label className={["text-[13px] font-extrabold", text].join(" ")}>
+              Specimen Name <span className="text-red-500">*</span>
+            </label>
+            <span className={["text-[12px] font-semibold", subText].join(" ")}>Required</span>
+          </div>
+
           <input
             type="text"
             value={specimenName}
             onChange={(e) => setSpecimenName(e.target.value)}
             onFocus={(e) => {
-              // Optional: stop OS keyboard on touchscreens
-              // The virtual keyboard will still open because GlobalKeyboardProvider listens to focusin
               if ("ontouchstart" in window) {
                 e.target.blur();
                 setTimeout(() => e.target.focus(), 0);
@@ -562,135 +539,101 @@ const WoodTests = ({ darkMode = false }) => {
             }}
             placeholder="Enter specimen name"
             data-keyboard="1"
-            className={`w-full px-2 py-1.5 border-2 focus:outline-none text-[15px] keyboard-trigger ${
+            className={[
+              "w-full h-11 px-3 rounded-xl border",
+              "text-[16px] font-semibold keyboard-trigger",
+              "focus:outline-none focus:ring-2 focus:ring-blue-500/30",
+              border,
               darkMode
-                ? "bg-gray-800 border-gray-600 text-gray-100 placeholder-gray-500 focus:border-blue-400"
-                : "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500"
-            }`}
+                ? "bg-gray-950/30 text-gray-100 placeholder-gray-500"
+                : "bg-white text-gray-900 placeholder-gray-400",
+            ].join(" ")}
           />
-
         </div>
 
-        {/* Two Column Layout - TAKES UP REMAINING SPACE */}
-        <div
-          className={`flex-1 grid grid-cols-2 border-b-2 ${darkMode ? "border-gray-700" : "border-gray-300"}`}
-        >
-          {/* LEFT COLUMN - Sub-type Selection */}
-          {(selectedTest === "COMPRESSIVE TEST" ||
-            selectedTest === "SHEAR TEST") && (
-            <div
-              className={`flex flex-col border-r-2 ${darkMode ? "border-gray-700" : "border-gray-300"}`}
-            >
-              <label
-                className={`block text-[13px] font-semibold px-2 pt-2 pb-1 border-b-2 ${
-                  darkMode
-                    ? "text-gray-300 border-gray-700"
-                    : "text-gray-900 border-gray-300"
-                }`}
-              >
-                Test Sub-type <span className="text-red-500">*</span>
-              </label>
+        {/* Two column layout (same structure, improved styling) */}
+        <div className={["flex-1 grid grid-cols-2 border-b", border].join(" ")}>
+          {/* LEFT: Sub-type */}
+          {showSubType && (
+            <div className={["flex flex-col border-r", border].join(" ")}>
+              <div className={["px-3 py-2 border-b", border, surface2].join(" ")}>
+                <div className="flex items-center justify-between">
+                  <div className={["text-[13px] font-extrabold", text].join(" ")}>
+                    Test Sub-type <span className="text-red-500">*</span>
+                  </div>
+                  <div className={["text-[12px] font-semibold", subText].join(" ")}>
+                    Required
+                  </div>
+                </div>
+              </div>
+
               <div className="flex-1 flex flex-col">
                 {selectedTest === "COMPRESSIVE TEST" ? (
                   <>
-                    <button
+                    <Btn
+                      active={subType === "Parallel"}
                       onClick={() => {
                         audio.play();
                         setSubType("Parallel");
                       }}
-                      className={`flex-1 px-2 text-[1.5rem] font-semibold transition-all border-b-2 ${
-                        subType === "Parallel"
-                          ? darkMode
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-blue-500 text-white border-blue-500"
-                          : darkMode
-                            ? "bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                      }`}
+                      className={["border-b", border].join(" ")}
                     >
                       PARALLEL TO GRAIN
-                    </button>
-                    <button
+                    </Btn>
+                    <Btn
+                      active={subType === "Perpendicular"}
                       onClick={() => {
                         audio.play();
                         setSubType("Perpendicular");
                       }}
-                      className={`flex-1 px-2 text-[1.5rem] font-semibold transition-all ${
-                        subType === "Perpendicular"
-                          ? darkMode
-                            ? "bg-blue-600 text-white"
-                            : "bg-blue-500 text-white"
-                          : darkMode
-                            ? "bg-gray-800 text-gray-200 hover:bg-gray-700"
-                            : "bg-white text-gray-900 hover:bg-gray-100"
-                      }`}
                     >
                       PERPENDICULAR TO GRAIN
-                    </button>
+                    </Btn>
                   </>
                 ) : (
                   <>
-                    <button
+                    <Btn
+                      active={subType === "Single"}
                       onClick={() => {
                         audio.play();
                         setSubType("Single");
                       }}
-                      className={`flex-1 px-2 text-[1.5rem] font-semibold transition-all border-b-2 ${
-                        subType === "Single"
-                          ? darkMode
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-blue-500 text-white border-blue-500"
-                          : darkMode
-                            ? "bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                      }`}
+                      className={["border-b", border].join(" ")}
                     >
                       SINGLE SHEAR
-                    </button>
-                    <button
+                    </Btn>
+                    <Btn
+                      active={subType === "Double"}
                       onClick={() => {
                         audio.play();
                         setSubType("Double");
                       }}
-                      className={`flex-1 px-2 text-[1.5rem] font-semibold transition-all ${
-                        subType === "Double"
-                          ? darkMode
-                            ? "bg-blue-600 text-white"
-                            : "bg-blue-500 text-white"
-                          : darkMode
-                            ? "bg-gray-800 text-gray-200 hover:bg-gray-700"
-                            : "bg-white text-gray-900 hover:bg-gray-100"
-                      }`}
                     >
                       DOUBLE SHEAR
-                    </button>
+                    </Btn>
                   </>
                 )}
               </div>
             </div>
           )}
 
-          {/* If no sub-type needed, span full width for Test Procedure */}
-          {!(
-            selectedTest === "COMPRESSIVE TEST" || selectedTest === "SHEAR TEST"
-          ) && (
+          {/* RIGHT: Procedure (or full width if no subtype) */}
+          {!showSubType ? (
             <div className="col-span-2 flex flex-col">
-              <label
-                className={`block text-[13px] font-semibold px-2 pt-2 pb-1 border-b-2 ${
-                  darkMode
-                    ? "text-gray-300 border-gray-700"
-                    : "text-gray-900 border-gray-300"
-                }`}
-              >
-                Test Procedure
-              </label>
+              <div className={["px-3 py-2 border-b", border, surface2].join(" ")}>
+                <div className={["text-[13px] font-extrabold", text].join(" ")}>Test Procedure</div>
+              </div>
+
               <div className="flex-1 flex flex-col">
                 <label
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 cursor-pointer transition-colors ${
-                    darkMode
-                      ? "border-gray-600 bg-gray-800 hover:bg-gray-700"
-                      : "border-gray-300 bg-white hover:bg-gray-50"
-                  } ${includeMoisture ? (darkMode ? "bg-blue-900" : "bg-blue-100") : ""}`}
+                  className={[
+                    "flex-1 flex items-center gap-3 px-3 cursor-pointer",
+                    "border-b",
+                    border,
+                    includeMoisture
+                      ? (darkMode ? "bg-blue-500/15" : "bg-blue-600/10")
+                      : (darkMode ? "bg-white/5 hover:bg-white/10" : "bg-white hover:bg-gray-50"),
+                  ].join(" ")}
                 >
                   <input
                     type="checkbox"
@@ -699,60 +642,32 @@ const WoodTests = ({ darkMode = false }) => {
                       audio.play();
                       setIncludeMoisture(e.target.checked);
                     }}
-                    className="w-4 h-4"
+                    className="w-5 h-5"
                   />
-                  <span
-                    className={`font-medium text-[15px] ${
-                      darkMode ? "text-gray-200" : "text-gray-900"
-                    }`}
-                  >
-                    Moisture Test
-                  </span>
+                  <span className={["text-[18px] font-semibold", text].join(" ")}>Moisture Test</span>
+                  <span className={["ml-auto text-[12px] font-semibold", subText].join(" ")}>Optional</span>
                 </label>
-                <div
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 ${
-                    darkMode
-                      ? "bg-gray-700 text-gray-300 border-gray-600"
-                      : "bg-gray-200 text-gray-700 border-gray-300"
-                  }`}
-                >
-                  <span className="font-medium text-[15px]">Measurement Test</span>
-                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
-                </div>
-                <div
-                  className={`flex-1 flex items-center gap-2 px-2 ${
-                    darkMode
-                      ? "bg-gray-700 text-gray-300"
-                      : "bg-gray-200 text-gray-700"
-                  }`}
-                >
-                  <span className="font-medium text-[15px]">Strength Test</span>
-                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
-                </div>
+
+                <RowItem right="✓ Required">Measurement Test</RowItem>
+                <RowItem right="✓ Required">Strength Test</RowItem>
               </div>
             </div>
-          )}
-
-          {/* RIGHT COLUMN - Test Procedure (only if sub-type exists) */}
-          {(selectedTest === "COMPRESSIVE TEST" ||
-            selectedTest === "SHEAR TEST") && (
+          ) : (
             <div className="flex flex-col">
-              <label
-                className={`block text-[13px] font-semibold px-2 pt-2 pb-1 border-b-2 ${
-                  darkMode
-                    ? "text-gray-300 border-gray-700"
-                    : "text-gray-900 border-gray-300"
-                }`}
-              >
-                Test Procedure
-              </label>
+              <div className={["px-3 py-2 border-b", border, surface2].join(" ")}>
+                <div className={["text-[13px] font-extrabold", text].join(" ")}>Test Procedure</div>
+              </div>
+
               <div className="flex-1 flex flex-col">
                 <label
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 cursor-pointer transition-colors ${
-                    darkMode
-                      ? "border-gray-600 bg-gray-800 hover:bg-gray-700"
-                      : "border-gray-300 bg-white hover:bg-gray-50"
-                  } ${includeMoisture ? (darkMode ? "bg-blue-900" : "bg-blue-100") : ""}`}
+                  className={[
+                    "flex-1 flex items-center gap-3 px-3 cursor-pointer",
+                    "border-b",
+                    border,
+                    includeMoisture
+                      ? (darkMode ? "bg-blue-500/15" : "bg-blue-600/10")
+                      : (darkMode ? "bg-white/5 hover:bg-white/10" : "bg-white hover:bg-gray-50"),
+                  ].join(" ")}
                 >
                   <input
                     type="checkbox"
@@ -761,56 +676,33 @@ const WoodTests = ({ darkMode = false }) => {
                       audio.play();
                       setIncludeMoisture(e.target.checked);
                     }}
-                    className="w-4 h-4"
+                    className="w-5 h-5"
                   />
-                  <span
-                    className={`font-medium text-[1.5rem] ${
-                      darkMode ? "text-gray-200" : "text-gray-900"
-                    }`}
-                  >
-                    Moisture Test
-                  </span>
+                  <span className={["text-[18px] font-semibold", text].join(" ")}>Moisture Test</span>
+                  <span className={["ml-auto text-[12px] font-semibold", subText].join(" ")}>Optional</span>
                 </label>
-                <div
-                  className={`flex-1 flex items-center gap-2 px-2 border-b-2 ${
-                    darkMode
-                      ? "bg-gray-700 text-gray-300 border-gray-600"
-                      : "bg-gray-200 text-gray-700 border-gray-300"
-                  }`}
-                >
-                  <span className="font-medium text-[1.5rem]">
-                    Measurement Test
-                  </span>
-                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
-                </div>
-                <div
-                  className={`flex-1 flex items-center gap-2 px-2 ${
-                    darkMode
-                      ? "bg-gray-700 text-gray-300"
-                      : "bg-gray-200 text-gray-700"
-                  }`}
-                >
-                  <span className="font-medium text-[1.5rem]">
-                    Strength Test
-                  </span>
-                  <span className="ml-auto text-xs text-green-400">✓ Required</span>
-                </div>
+
+                <RowItem right="✓ Required">Measurement Test</RowItem>
+                <RowItem right="✓ Required">Strength Test</RowItem>
               </div>
             </div>
           )}
         </div>
 
-        {/* Begin Test Button - Increased font size */}
+        {/* Start button (cleaner, not shouting with huge padding) */}
         <button
           onClick={handleBeginTest}
           disabled={!isFormValid()}
-          className={`py-4 text-[20px] font-bold transition-all ${
+          className={[
+            "h-14",
+            "text-[18px] font-extrabold tracking-widest",
+            "transition active:scale-[0.99]",
             isFormValid()
-              ? "bg-green-500 text-white hover:bg-green-600 active:scale-[0.99]"
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
               : darkMode
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-          }`}
+                ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                : "bg-gray-200 text-gray-500 cursor-not-allowed",
+          ].join(" ")}
         >
           START
         </button>

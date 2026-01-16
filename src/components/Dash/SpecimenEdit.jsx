@@ -4,6 +4,8 @@ import axios from "axios";
 const CONTACT_W_MM = 76.2;
 const CONTACT_H_MM = 76.2;
 const CONTACT_AREA_MM2 = CONTACT_W_MM * CONTACT_H_MM;
+const PRESSURE_BAR_MAX = 1000;
+const PRESSURE_BAR_HINT = `Range: 0-${PRESSURE_BAR_MAX} bar (API limit)`;
 
 const baseShell = "h-full flex flex-col transition-colors";
 const lightShell = "bg-zinc-50 text-zinc-900";
@@ -265,6 +267,11 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       if (!Number.isFinite(n) || n <= 0) nextErrors[key] = "Must be a positive number";
     }
 
+    const pressureBar = readNum(form.pressure_bar);
+    if (!nextErrors.pressure_bar && Number.isFinite(pressureBar) && pressureBar > PRESSURE_BAR_MAX) {
+      nextErrors.pressure_bar = `Must be ${PRESSURE_BAR_MAX} bar or less`;
+    }
+
     // stress/max_force are no longer mandatory (we compute from pressure_bar)
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -309,7 +316,20 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating data:", err);
-      alert(`Failed to update: ${err.response?.data?.detail || err.message}`);
+      const apiErrors = err?.response?.data?.errors;
+      if (apiErrors && typeof apiErrors === "object") {
+        const fieldErrors = {};
+        const messages = [];
+        for (const [field, message] of Object.entries(apiErrors)) {
+          const text = Array.isArray(message) ? message[0] : String(message);
+          fieldErrors[field] = text;
+          messages.push(text);
+        }
+        setErrors(fieldErrors);
+        alert(`Failed to update: ${messages.join(" ")}`);
+      } else {
+        alert(`Failed to update: ${err.response?.data?.message || err.message}`);
+      }
       setSaving(false);
     }
   };
@@ -467,6 +487,8 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
               <input
                 type="text"
                 inputMode="decimal"
+                max={PRESSURE_BAR_MAX}
+                aria-describedby="pressure-bar-help"
                 value={form.pressure_bar}
                 onInput={(e) => updateForm({ pressure_bar: e.currentTarget.value })}
                 className={inputCls}
@@ -477,6 +499,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
 
               <div className={`text-[11px] mt-1 ${darkMode ? "text-zinc-300" : "text-zinc-600"}`}>
                 Derived: MPa = bar × 0.1 → <b>{derived.mpa.toFixed(2)} MPa</b>
+                <div id="pressure-bar-help">{PRESSURE_BAR_HINT}</div>
               </div>
             </div>
 
