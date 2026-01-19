@@ -434,6 +434,12 @@ const Dash = ({ darkMode = false }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const extractRows = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    return [];
+  };
+
   const fetchAllData = async () => {
     setLoading(true);
     try {
@@ -443,9 +449,9 @@ const Dash = ({ darkMode = false }) => {
         axios.get("http://127.0.0.1:8000/api/flexure-data"),
       ]);
 
-      setCompressiveData(compRes.data || []);
-      setShearData(shearRes.data || []);
-      setFlexureData(flexRes.data || []);
+      setCompressiveData(extractRows(compRes.data));
+      setShearData(extractRows(shearRes.data));
+      setFlexureData(extractRows(flexRes.data));
     } catch (err) {
       console.error("Error fetching data:", err);
       setError("Failed to load data");

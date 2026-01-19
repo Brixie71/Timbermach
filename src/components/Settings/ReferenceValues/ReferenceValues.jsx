@@ -521,6 +521,12 @@ const ReferenceValues = ({ darkMode = true }) => {
     fetchAllData();
   }, []);
 
+  const extractRows = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    return [];
+  };
+
   // Filter and search
   useEffect(() => {
     let filtered = [...referenceValues];
@@ -565,7 +571,7 @@ const ReferenceValues = ({ darkMode = true }) => {
       if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      setReferenceValues(data);
+      setReferenceValues(extractRows(data));
     } catch (err) {
       console.error("Failed to load reference values:", err);
       setError(
