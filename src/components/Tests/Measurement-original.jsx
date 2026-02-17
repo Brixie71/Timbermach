@@ -1,14 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Settings2, Save, RefreshCcw } from "lucide-react";
 
 const PY_API = "http://localhost:5000";
+const LARAVEL_API =
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 const DEFAULT_PARAMS = {
   threshold1: 52,
   threshold2: 104,
-  mask_thresh: 0, // 0=Otsu, >0 manual
-  open_k: 3, // odd
-  close_k: 5, // odd
-
   min_area: 1000,
   blur_kernel: 21,
   dilation: 1,
@@ -43,7 +42,6 @@ const FLEXURE_LENGTH_MM = 584.2; // 23 inches fixed span
 const LENGTH_CHOICES_IN = [4, 9];
 const inchToMm = (inch) => inch * 25.4;
 const HEIGHT_CHOICES_IN = [1, 2, 3];
-const SNAP_JPEG_QUALITY = 0.92;
 
 
 function prettyTestTitle(testType, subType) {
@@ -76,20 +74,6 @@ function areaRuleText(testType, subType) {
   }
   if (t === "flexure") return "Area display = W(base) x L (span)";
   return "Area = W x H";
-}
-
-function normalizeRoiShapeFlag(rawValue, testType, subType) {
-  if (rawValue === 1 || rawValue === "1" || rawValue === true) return 1;
-  if (rawValue === 0 || rawValue === "0" || rawValue === false) return 0;
-
-  const text = String(rawValue || "").toLowerCase();
-  if (text === "square" || text === "sq") return 1;
-  if (text === "rectangle" || text === "rect") return 0;
-
-  const t = String(testType || "").toLowerCase();
-  const s = String(subType || "").toLowerCase();
-  if (t === "compressive" && s === "perpendicular") return 0;
-  return 1;
 }
 
 function LengthSetupModal({
@@ -313,6 +297,7 @@ export default function Measurement({
   const [cameraReady, setCameraReady] = useState(false);
 
   const [params, setParams] = useState(DEFAULT_PARAMS);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const [overlayBase64, setOverlayBase64] = useState(null);
   const [result, setResult] = useState(null);
@@ -377,9 +362,6 @@ export default function Measurement({
     if (tLower === "flexure") return FLEXURE_LENGTH_MM;
     return inchToMm(Number(lengthChoiceIn) || 0);
   }, [tLower, lengthChoiceIn]);
-
-  const canDetectNow =
-    cameraReady && (tLower === "flexure" || lengthLocked);
 
   // UPDATED: use selected length (instead of dominant side squared)
   const computeAutoLengthMM = () => {
@@ -467,36 +449,38 @@ export default function Measurement({
     };
   };
 
-  const roiGuideStyle = useMemo(() => {
-    const roiPct = Math.max(5, Math.min(100, Number(params.roi_size) || 60));
-    const roiShape = normalizeRoiShapeFlag(params.roi_shape, tLower, sLower);
+  const areaMM2Display =
+    measurement?.areaMM2 ??
+    (result?.width_mm && result?.height_mm ? result.width_mm * result.height_mm : 0);
+  const areaIN2Display = areaMM2Display ? areaMM2Display / 645.16 : 0;
 
-    let widthPct = roiPct;
-    let heightPct = roiPct;
-    const video = videoRef.current;
+  const latestMeasurementSnapshot = () => {
+    const hasMeasurement = !!measurement || !!result;
+    if (!hasMeasurement) return null;
 
-    // Match backend square ROI behavior: side = min(frame_w, frame_h) * roi_size%.
-    if (roiShape === 1 && video?.videoWidth && video?.videoHeight) {
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      const side = Math.min(vw, vh) * (roiPct / 100);
-      widthPct = (side / vw) * 100;
-      heightPct = (side / vh) * 100;
-    }
+    const baseMM =
+      measurement?.width ?? result?.rect_width_mm ?? result?.width_mm ?? null;
+    const heightMM =
+      measurement?.height ?? result?.rect_height_mm ?? result?.height_mm ?? null;
+    const lengthMM = measurement?.length ?? null;
+
+    const areaMM2 =
+      measurement?.areaMM2 ??
+      (result?.width_mm && result?.height_mm
+        ? result.width_mm * result.height_mm
+        : null);
+    const areaIN2 = areaMM2 ? areaMM2 / 645.16 : null;
 
     return {
-      position: "absolute",
-      top: "50%",
-      left: "50%",
-      transform: "translate(-50%, -50%)",
-      width: `${widthPct}%`,
-      height: `${heightPct}%`,
-      border: "2px dashed rgba(255,255,255,0.55)",
-      borderRadius: 10,
-      pointerEvents: "none",
-      boxShadow: "0 0 0 9999px rgba(0,0,0,0.18)",
+      testType,
+      subType,
+      base_mm: baseMM,
+      height_mm: heightMM,
+      length_mm: lengthMM,
+      area_mm2: areaMM2,
+      area_in2: areaIN2,
     };
-  }, [params.roi_size, params.roi_shape, tLower, sLower, cameraReady]);
+  };
 
   const stopCamera = () => {
     try {
@@ -575,15 +559,52 @@ export default function Measurement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tLower, sLower, lengthLocked]);
 
-  const detectFromCurrentFrame = async ({
-    clearPreview = false,
-    silent = false,
-  } = {}) => {
-    if (clearPreview) {
-      setOverlayBase64(null);
-      setResult(null);
-      setMeasurement(null);
+  const loadSettings = async () => {
+    setErr(null);
+    try {
+      const res = await fetch(`${LARAVEL_API}/api/measurement-settings/active`);
+      if (!res.ok) return; // don't hard-fail if endpoint not added yet
+      const data = await res.json();
+      const shapeForMode = tLower === "compressive" && sLower === "perpendicular" ? "rectangle" : "square";
+      const merged = { ...DEFAULT_PARAMS, ...data, roi_shape: shapeForMode };
+      if (merged.blur_kernel % 2 === 0) merged.blur_kernel += 1;
+      setParams(merged);
+    } catch {
+      // silently ignore until your Laravel endpoint exists
     }
+  };
+
+  const saveSettings = async () => {
+    setErr(null);
+    const snapshot = latestMeasurementSnapshot();
+    const payload = snapshot ? { ...params, last_measurement: snapshot } : params;
+    try {
+      const res = await fetch(`${LARAVEL_API}/api/measurement-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || "Failed to save settings");
+      }
+    } catch (e) {
+      setErr(e?.message || "Failed to save settings");
+    }
+  };
+
+  // Load saved detection params on mount so measurements reuse the latest calibration
+  useEffect(() => {
+    loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const snapAndMeasure = async () => {
+    setBusy(true);
+    setErr(null);
+    setOverlayBase64(null);
+    setResult(null);
+    setMeasurement(null);
 
     try {
       const video = videoRef.current;
@@ -591,6 +612,7 @@ export default function Measurement({
       if (!video || !canvas || !cameraReady)
         throw new Error("Camera not ready");
 
+      // draw current frame at actual video size
       const w = video.videoWidth || 1280;
       const h = video.videoHeight || 720;
       canvas.width = w;
@@ -600,17 +622,13 @@ export default function Measurement({
       ctx.drawImage(video, 0, 0, w, h);
 
       const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", SNAP_JPEG_QUALITY)
+        canvas.toBlob(resolve, "image/jpeg", 0.92)
       );
       if (!blob) throw new Error("Failed to capture frame");
 
       const form = new FormData();
       form.append("image", blob, "snap.jpg");
-      const apiParams = {
-        ...params,
-        roi_shape: normalizeRoiShapeFlag(params.roi_shape, tLower, sLower),
-      };
-      form.append("params", JSON.stringify({ ...apiParams, testType, subType }));
+      form.append("params", JSON.stringify({ ...params, testType, subType }));
       form.append("testType", testType);
       form.append("subType", subType);
 
@@ -629,6 +647,7 @@ export default function Measurement({
       }
 
       const data = await res.json();
+
       if (!data.success) {
         if (data.overlayBase64) setOverlayBase64(data.overlayBase64);
         throw new Error(data.error || "Detection failed");
@@ -642,34 +661,20 @@ export default function Measurement({
       const payload = buildMeasurementPayload(best, data.paramsUsed || params);
       setMeasurement(payload);
 
-      return payload;
+      // send to parent (so you can store it / proceed)
+      onTestComplete?.(payload);
     } catch (e) {
-      if (!silent) {
-        setErr(e?.message || "Failed to measure");
-      }
-      throw e;
-    }
-  };
-
-  const snapAndMeasure = async () => {
-    setBusy(true);
-    setErr(null);
-
-    try {
-      const payload = await detectFromCurrentFrame({
-        clearPreview: true,
-        silent: false,
-      });
-      if (payload) {
-        setTimeout(() => {
-          onTestComplete?.(payload);
-        }, 500);
-      }
-    } catch {
-      // Error is already handled inside detectFromCurrentFrame.
+      setErr(e?.message || "Failed to measure");
     } finally {
       setBusy(false);
     }
+  };
+
+  const reset = () => {
+    setOverlayBase64(null);
+    setResult(null);
+    setMeasurement(null);
+    setErr(null);
   };
 
   // Basic theme (keep your existing look)
@@ -718,11 +723,73 @@ export default function Measurement({
             {prettyTestTitle(testType, subType)}
             </div>
 
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button
+              onClick={loadSettings}
+              title="Reload settings"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: darkMode ? "1px solid rgba(255,255,255,0.10)" : "1px solid #e5e7eb",
+                background: darkMode ? "rgba(255,255,255,0.06)" : "#fff",
+                color: "inherit",
+                cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              <RefreshCcw size={16} /> Refresh
+            </button>
+
+            <button
+              onClick={saveSettings}
+              title="Save settings"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: darkMode ? "1px solid rgba(255,255,255,0.10)" : "1px solid #e5e7eb",
+                background: darkMode ? "rgba(59,130,246,0.18)" : "rgba(59,130,246,0.10)",
+                color: "inherit",
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: 12,
+              }}
+            >
+              <Save size={16} /> Save
+            </button>
+
+            <button
+              onClick={() => setPanelOpen((v) => !v)}
+              title="Toggle settings panel"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: darkMode ? "1px solid rgba(255,255,255,0.10)" : "1px solid #e5e7eb",
+                background: darkMode ? "rgba(255,255,255,0.06)" : "#fff",
+                color: "inherit",
+                cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              <Settings2 size={16} /> Params
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div style={{ height: "calc(100% - 52px)" }}>
-          <div style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%" }}>
+        <div style={{ display: "grid", gridTemplateColumns: panelOpen ? "1fr 360px" : "1fr", height: "calc(100% - 52px)" }}>
+          {/* Left: camera + overlay */}
+          <div style={{ position: "relative", overflow: "hidden" }}>
             <video
               ref={videoRef}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -746,25 +813,6 @@ export default function Measurement({
               />
             ) : null}
 
-            <div style={roiGuideStyle}>
-              <div
-                style={{
-                  position: "absolute",
-                  top: -26,
-                  left: 0,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  background: "rgba(0,0,0,0.45)",
-                  color: "#e5e7eb",
-                  fontSize: 11,
-                  fontWeight: 900,
-                  letterSpacing: 0.3,
-                }}
-              >
-                ROI
-              </div>
-            </div>
-
             {/* bottom controls */}
             <div
               style={{
@@ -779,9 +827,9 @@ export default function Measurement({
             >
               <button
                 onClick={snapAndMeasure}
-                disabled={busy || !canDetectNow}
+                disabled={busy || !cameraReady || (tLower !== "flexure" && !lengthLocked)}
                 style={{
-                  flex: 2,
+                  flex: 1,
                   padding: "14px 14px",
                   borderRadius: 14,
                   border: "1px solid rgba(255,255,255,0.12)",
@@ -792,7 +840,22 @@ export default function Measurement({
                   letterSpacing: 0.2,
                 }}
               >
-                {busy ? "Detecting..." : "Snap"}
+                {busy ? "Measuring..." : "Snap & Measure"}
+              </button>
+
+              <button
+                onClick={reset}
+                style={{
+                  padding: "14px 14px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Reset
               </button>
 
               <button
@@ -841,29 +904,190 @@ export default function Measurement({
                 </>
               )}
             </div>
+          </div>
 
-            {err ? (
+          {/* Right panel */}
+          {panelOpen ? (
+            <div
+              style={{
+                borderLeft: darkMode
+                  ? "1px solid rgba(255,255,255,0.08)"
+                  : "1px solid #e5e7eb",
+                padding: 12,
+                overflow: "auto",
+              }}
+            >
+              {/* error */}
+              {err ? (
+                <div
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                    padding: 10,
+                    borderRadius: 12,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  {err}
+                </div>
+              ) : null}
+
+              {/* measurement summary */}
               <div
                 style={{
-                  position: "absolute",
-                  top: 12,
-                  right: 12,
-                  maxWidth: 360,
-                  background: "rgba(239,68,68,0.20)",
-                  border: "1px solid rgba(239,68,68,0.35)",
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  fontWeight: 800,
-                  fontSize: 12,
-                  color: "#fecaca",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "rgba(255,255,255,0.04)",
                 }}
               >
-                {err}
+                <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 900 }}>
+                  Summary
+                </div>
+
+                {!result ? (
+                  <div style={{ marginTop: 8, fontSize: 13, color: "#9ca3af" }}>
+                    Take a snapshot to compute dimensions.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: "#9ca3af" }}>Width</div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>
+                          {(
+                            measurement?.width ??
+                            result.rect_width_mm ??
+                            result.width_mm
+                          ).toFixed(1)}{" "}
+                          mm
+                        </div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                          {(
+                            (measurement?.width ??
+                              result.rect_width_mm ??
+                              result.width_mm) / 25.4
+                          ).toFixed(3)}
+                          "
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 12, color: "#9ca3af" }}>Height</div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>
+                          {(
+                            measurement?.height ??
+                            result.rect_height_mm ??
+                            result.height_mm
+                          ).toFixed(1)}{" "}
+                          mm
+                        </div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                          {(
+                            (measurement?.height ??
+                              result.rect_height_mm ??
+                              result.height_mm) / 25.4
+                          ).toFixed(3)}
+                          "
+                        </div>
+                      </div>
+
+                      {measurement?.length ? (
+                        <div>
+                          <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                            Length (auto)
+                          </div>
+                          <div style={{ fontSize: 20, fontWeight: 900 }}>
+                            {measurement.length.toFixed(1)} mm
+                          </div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                            {measurement.lengthInches?.toFixed(3)}"
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <div style={{ fontSize: 12, color: "#9ca3af" }}>Area</div>
+                        <div style={{ fontSize: 20, fontWeight: 900 }}>
+                          {areaMM2Display.toFixed(1)} mm^2
+                        </div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                          {areaIN2Display.toFixed(3)} in^2
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#9ca3af", lineHeight: 1.4 }}>
+                      Camera: {cameraLabelUsed || "default"} | mm/px:{" "}
+                      {(measurement?.mmPerPixel ?? params.mm_per_pixel).toFixed(4)}
+                      <br />
+                      Area rule: {areaRuleText(testType, subType)}
+                    </div>
+                  </>
+                )}
               </div>
-            ) : null}
-          </div>
+
+              {/* settings controls placeholder (keep your existing controls below) */}
+              <div style={{ marginTop: 16, fontSize: 12, color: "#9ca3af", fontWeight: 900 }}>
+                Parameters
+              </div>
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                {[
+                  { k: "threshold1", label: "Threshold 1", min: 0, max: 255, step: 1 },
+                  { k: "threshold2", label: "Threshold 2", min: 0, max: 255, step: 1 },
+                  { k: "min_area", label: "Min Area", min: 0, max: 20000, step: 10 },
+                  { k: "blur_kernel", label: "Blur Kernel (odd)", min: 1, max: 51, step: 2 },
+                  { k: "dilation", label: "Dilation", min: 0, max: 10, step: 1 },
+                  { k: "erosion", label: "Erosion", min: 0, max: 10, step: 1 },
+                  { k: "edge_thickness", label: "Edge Thickness", min: 1, max: 7, step: 1 },
+                  { k: "brightness", label: "Brightness", min: -100, max: 100, step: 1 },
+                  { k: "contrast", label: "Contrast", min: 0, max: 200, step: 1 },
+                  { k: "mm_per_pixel", label: "mm per pixel", min: 0.001, max: 1.0, step: 0.001 },
+                ].map(({ k, label, min, max, step }) => (
+                  <label key={k} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 800 }}>{label}</span>
+                    <input
+                      type="number"
+                      value={params[k]}
+                      min={min}
+                      max={max}
+                      step={step}
+                      onChange={(e) => {
+                        let v = Number(e.target.value);
+                        if (Number.isNaN(v)) v = min;
+                        if (k === "blur_kernel") {
+                          v = Math.max(min, Math.min(max, v));
+                          if (v % 2 === 0) v += 1; // keep odd
+                        }
+                        setParams((p) => ({ ...p, [k]: v }));
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: darkMode ? "1px solid rgba(255,255,255,0.12)" : "1px solid #d1d5db",
+                        background: darkMode ? "rgba(255,255,255,0.05)" : "#fff",
+                        color: "inherit",
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "#9ca3af", fontWeight: 800 }}>
+                <input
+                  type="checkbox"
+                  checked={params.denoise_enabled}
+                  onChange={(e) => setParams((p) => ({ ...p, denoise_enabled: e.target.checked }))}
+                />
+                Denoise enabled
+              </label>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
+

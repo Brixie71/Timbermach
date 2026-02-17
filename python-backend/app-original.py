@@ -190,28 +190,25 @@ def shape_detect_measure():
         description: Bad request
     """
     try:
-        img, err = _read_image_from_request()
-        if err:
-            return jsonify({"success": False, "error": err}), 400
+        if "image" not in request.files:
+            return jsonify({"success": False, "error": "No image file"}), 400
 
+        image_bytes = request.files["image"].read()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return jsonify({"success": False, "error": "Failed to decode image"}), 400
+
+        params_raw = request.form.get("params", "")
         params = {}
-        if request.is_json:
-            data = request.get_json(silent=True) or {}
-            params = data.get("params") or {}
-            if not isinstance(params, dict):
+        if params_raw:
+            try:
+                params = json.loads(params_raw)
+            except Exception:
                 return jsonify({"success": False, "error": "Invalid params JSON"}), 400
-            test_type = data.get("testType") or data.get("test_type")
-            sub_type = data.get("subType") or data.get("sub_type")
-        else:
-            params_raw = request.form.get("params", "")
-            if params_raw:
-                try:
-                    params = json.loads(params_raw)
-                except Exception:
-                    return jsonify({"success": False, "error": "Invalid params JSON"}), 400
-            test_type = request.form.get("testType") or request.form.get("test_type")
-            sub_type = request.form.get("subType") or request.form.get("sub_type")
 
+        test_type = request.form.get("testType") or request.form.get("test_type")
+        sub_type = request.form.get("subType") or request.form.get("sub_type")
         if test_type and "testType" not in params:
             params["testType"] = test_type
         if sub_type and "subType" not in params:

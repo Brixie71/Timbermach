@@ -32,6 +32,8 @@
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
     "axios": "^1.13.2",
+    "codex": "^0.2.3",
+    "d3": "^7.9.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
