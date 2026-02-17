@@ -6,6 +6,102 @@ import MoistureTestPage from "./MoistureTest";
 import DimensionMeasurementPage from "./Measurement";
 import TestSummary from "./TestSummary";
 
+const StageResultView = ({
+  darkMode = false,
+  title = "Result",
+  subtitle = "",
+  rows = [],
+  onRetake = () => {},
+  onContinue = () => {},
+  onBackToMenu = () => {},
+}) => {
+  return (
+    <div className={`w-full h-full flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+      <div
+        className={`px-5 py-4 border-b ${
+          darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-white"
+        }`}
+      >
+        <div className={`text-sm font-semibold ${darkMode ? "text-gray-300" : "text-gray-500"}`}>
+          Test Result
+        </div>
+        <div className={`text-2xl font-bold mt-1 ${darkMode ? "text-white" : "text-gray-900"}`}>
+          {title}
+        </div>
+        {subtitle ? (
+          <div className={`text-sm mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+            {subtitle}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex-1 p-5 overflow-auto">
+        <div
+          className={`rounded-xl border ${
+            darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-white"
+          }`}
+        >
+          {rows.map((row, idx) => (
+            <div
+              key={`${row.label}-${idx}`}
+              className={`px-4 py-3 flex items-center justify-between ${
+                idx !== rows.length - 1
+                  ? darkMode
+                    ? "border-b border-gray-700"
+                    : "border-b border-gray-200"
+                  : ""
+              }`}
+            >
+              <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                {row.label}
+              </span>
+              <span className={`text-lg font-semibold ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className={`px-5 py-4 border-t flex gap-3 ${
+          darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-white"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={onBackToMenu}
+          className={`px-4 py-2 rounded-lg font-semibold ${
+            darkMode
+              ? "bg-gray-700 text-gray-100 hover:bg-gray-600"
+              : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+          }`}
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          onClick={onRetake}
+          className={`px-4 py-2 rounded-lg font-semibold ${
+            darkMode
+              ? "bg-yellow-600 text-white hover:bg-yellow-700"
+              : "bg-yellow-500 text-white hover:bg-yellow-600"
+          }`}
+        >
+          Retake
+        </button>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="ml-auto px-5 py-2 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700"
+        >
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const WoodTests = ({ darkMode = false }) => {
   // State management
   const [selectedTest, setSelectedTest] = useState(null);
@@ -192,6 +288,13 @@ const WoodTests = ({ darkMode = false }) => {
     return sequence;
   };
 
+  const getNextStage = (stage) => {
+    const sequence = determineTestSequence();
+    const idx = sequence.indexOf(stage);
+    if (idx === -1 || idx + 1 >= sequence.length) return "summary";
+    return sequence[idx + 1];
+  };
+
   const handleBeginTest = () => {
     audio.play();
 
@@ -215,12 +318,7 @@ const WoodTests = ({ darkMode = false }) => {
 
   const handleMoistureComplete = (data) => {
     setTestData((prev) => ({ ...prev, moistureData: data }));
-
-    const sequence = determineTestSequence();
-    const currentIndex = sequence.indexOf("moistureTest");
-    if (currentIndex !== -1 && currentIndex + 1 < sequence.length) {
-      setCurrentTestStage(sequence[currentIndex + 1]);
-    }
+    setCurrentTestStage("moistureResult");
   };
 
   const handleRetakeMoisture = () => setCurrentTestStage("moistureTest");
@@ -232,12 +330,7 @@ const WoodTests = ({ darkMode = false }) => {
 
   const handleMeasurementComplete = (data) => {
     setTestData((prev) => ({ ...prev, measurementData: data }));
-
-    const sequence = determineTestSequence();
-    const currentIndex = sequence.indexOf("dimensionTest");
-    if (currentIndex !== -1 && currentIndex + 1 < sequence.length) {
-      setCurrentTestStage(sequence[currentIndex + 1]);
-    }
+    setCurrentTestStage("measurementResult");
   };
 
   const handleRetakeMeasurement = () => setCurrentTestStage("dimensionTest");
@@ -255,7 +348,7 @@ const WoodTests = ({ darkMode = false }) => {
 
   const handleTestComplete = (data) => {
     setTestData((prev) => ({ ...prev, strengthData: data }));
-    setCurrentTestStage("summary");
+    setCurrentTestStage("strengthResult");
   };
 
   const handleRetakeStrength = () => setCurrentTestStage("mainTest");
@@ -322,6 +415,112 @@ const WoodTests = ({ darkMode = false }) => {
           onTestComplete={handleTestComplete}
           onPreviousTest={handleStrengthPrevious}
           onMainPageReturn={() => {
+            setTestStarted(false);
+            setSelectedTest(null);
+            resetSelections();
+          }}
+        />
+      );
+    }
+
+    if (currentTestStage === "moistureResult") {
+      const m = testData?.moistureData || {};
+      const capturedAt = m.capturedAt || m.timestamp;
+      const moistureValue =
+        m.value !== undefined && m.value !== null
+          ? `${m.value} %`
+          : m.numeric !== undefined && m.numeric !== null
+            ? `${Number(m.numeric).toFixed(1)} %`
+            : "N/A";
+
+      return (
+        <StageResultView
+          darkMode={darkMode}
+          title="Moisture Test Result"
+          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+          rows={[
+            { label: "Moisture", value: moistureValue },
+            { label: "Method", value: m.method || "Automatic" },
+            {
+              label: "Captured",
+              value: capturedAt
+                ? new Date(capturedAt).toLocaleString()
+                : "Just completed",
+            },
+          ]}
+          onRetake={() => setCurrentTestStage("moistureTest")}
+          onContinue={() => setCurrentTestStage(getNextStage("moistureTest"))}
+          onBackToMenu={() => {
+            setTestStarted(false);
+            setSelectedTest(null);
+            resetSelections();
+          }}
+        />
+      );
+    }
+
+    if (currentTestStage === "measurementResult") {
+      const d = testData?.measurementData || {};
+      const width = Number(d.width || 0);
+      const height = Number(d.height || 0);
+      const area = Number(d.areaMM2 || d.area || 0);
+      const length = d.length !== null && d.length !== undefined ? Number(d.length) : null;
+
+      const rows = [
+        { label: "Width", value: width ? `${width.toFixed(2)} mm` : "N/A" },
+        { label: "Height", value: height ? `${height.toFixed(2)} mm` : "N/A" },
+        { label: "Area", value: area ? `${area.toFixed(2)} mm^2` : "N/A" },
+      ];
+      if (length && Number.isFinite(length)) {
+        rows.push({ label: "Length", value: `${length.toFixed(2)} mm` });
+      }
+
+      return (
+        <StageResultView
+          darkMode={darkMode}
+          title="Dimension Measurement Result"
+          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+          rows={rows}
+          onRetake={() => setCurrentTestStage("dimensionTest")}
+          onContinue={() => setCurrentTestStage(getNextStage("dimensionTest"))}
+          onBackToMenu={() => {
+            setTestStarted(false);
+            setSelectedTest(null);
+            resetSelections();
+          }}
+        />
+      );
+    }
+
+    if (currentTestStage === "strengthResult") {
+      const s = testData?.strengthData || {};
+      const maxForce = Number(s.maxPressureMPa ?? s.maxForce ?? 0);
+      const duration = Number(s.duration || 0);
+
+      return (
+        <StageResultView
+          darkMode={darkMode}
+          title="Strength Test Result"
+          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+          rows={[
+            {
+              label: "Max Pressure",
+              value: maxForce ? `${maxForce.toFixed(2)} MPa` : "N/A",
+            },
+            {
+              label: "Duration",
+              value: Number.isFinite(duration) && duration > 0
+                ? `${duration.toFixed(1)} s`
+                : "N/A",
+            },
+            {
+              label: "Captured",
+              value: s.timestamp ? new Date(s.timestamp).toLocaleString() : "Just completed",
+            },
+          ]}
+          onRetake={() => setCurrentTestStage("mainTest")}
+          onContinue={() => setCurrentTestStage(getNextStage("mainTest"))}
+          onBackToMenu={() => {
             setTestStarted(false);
             setSelectedTest(null);
             resetSelections();
