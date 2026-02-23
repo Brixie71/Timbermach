@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   root: "./",
+  // Required for Electron packaged apps (file://) so built assets load correctly.
+  base: "./",
   build: {
     outDir: "dist",
   },
