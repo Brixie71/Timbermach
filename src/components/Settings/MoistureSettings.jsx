@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Trash2, Check, X, Eye, Plus, Calendar, Edit } from 'lucide-react';
+import { LARAVEL_BASE_URL } from "../../config/servers";
 
 const MoistureSettings = ({ onBack, onEditCalibration }) => {
-  const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+  const LARAVEL_API_URL = LARAVEL_BASE_URL;
   
   const [calibrations, setCalibrations] = useState([]);
   const [activeCalibration, setActiveCalibration] = useState(null);

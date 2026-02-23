@@ -23,8 +23,9 @@
     "dev:electron": "electron electron/main.cjs",
     "dev:fullstack": "concurrently -n \"REACT,LARAVEL,PYTHON\" -c \"blue,yellow,green\" \"npm run dev:react\" \"npm run dev:laravel\" \"npm run dev:python\"",
     "dev:all": "concurrently -n \"REACT,LARAVEL,PYTHON,ELECTRON\" -c \"blue,yellow,green,magenta\" \"npm run dev:react\" \"npm run dev:laravel\" \"npm run dev:python\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
+    "dev:all:no-python": "concurrently -n \"REACT,LARAVEL,ELECTRON\" -c \"blue,yellow,magenta\" \"npm run dev:react\" \"npm run dev:laravel\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
     "start": "npm run dev:fullstack",
-    "start:electron": "npm run dev:all",
+    "start:electron": "Timbermach.bat",
     "electron": "electron electron/main.cjs",
     "electron:dev": "concurrently -n \"REACT,LARAVEL,PYTHON\" -c \"blue,yellow,green\" \"npm run dev:react\" \"npm run dev:laravel\" \"npm run dev:python\" && wait-on http://localhost:5173 && electron electron/main.cjs",
     "package": "electron-builder"

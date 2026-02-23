@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { FLASK_BASE_URL } from "../../config/servers";
 
-const PY_API = "http://localhost:5000";
+const PY_API = FLASK_BASE_URL;
 
 const DEFAULT_PARAMS = {
   threshold1: 52,

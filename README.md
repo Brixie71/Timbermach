@@ -185,7 +185,9 @@ The `.env` file in the project root controls service connections:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
-VITE_PYTHON_API_URL=http://localhost:5000/
+VITE_PYTHON_API_URL=http://127.0.0.1:5000
+VITE_ACTUATOR_WS_URL=ws://localhost:8080
+VITE_SENSOR_WS_URL=ws://localhost:5001
 VITE_MOISTURE_CAMERA_NAME="Integrated Camera"
 VITE_OCR_INTERVAL_MS=0
 ```

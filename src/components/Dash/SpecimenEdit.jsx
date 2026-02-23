@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { laravelUrl } from "../../config/servers";
 
 const CONTACT_W_MM = 76.2;
 const CONTACT_H_MM = 76.2;
@@ -209,7 +210,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
     const fetchSpecies = async () => {
       setLoadingSpecies(true);
       try {
-        const res = await axios.get("http://127.0.0.1:8000/api/reference-values");
+        const res = await axios.get(laravelUrl("/api/reference-values"));
         setSpecies(Array.isArray(res.data) ? res.data : []);
       } catch (e) {
         console.error("Error fetching species:", e);
@@ -310,7 +311,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
         species_id: form.species_id ? parseInt(form.species_id, 10) : null,
       };
 
-      await axios.put(`http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`, payload);
+      await axios.put(laravelUrl(`/api/${dataType}-data/${specimenId}`), payload);
 
       clearDraft();
       setShowSuccessModal(true);

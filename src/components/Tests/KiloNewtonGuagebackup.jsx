@@ -30,7 +30,7 @@ const KiloNewtonGauge = ({ testType }) => {
   const percentage = (gaugeValue / config.max) * 100;
 
   useEffect(() => {
-    const socket = new WebSocket("ws://localhost:8080");
+    const socket = new WebSocket(import.meta.env.VITE_ACTUATOR_WS_URL);
 
     // Handle incoming messages from the WebSocket
     socket.onmessage = (event) => {

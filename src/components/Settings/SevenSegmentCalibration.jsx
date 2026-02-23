@@ -14,10 +14,10 @@ import {
   X,
 } from "lucide-react";
 import BackendStatusIndicator from "./BackendStatusIndicator";
+import { FLASK_BASE_URL, LARAVEL_BASE_URL } from "../../config/servers";
 
 const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
-  // Flask backend for image processing/OCR - always use port 5000
-  const API_URL = "http://127.0.0.1:5000";
+  const API_URL = FLASK_BASE_URL;
 
   // Helper function to format number with decimal point
   // Always returns 2 decimal places (e.g., 319 -> 31.90, not 31.9)
@@ -529,8 +529,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     setError(null);
 
     try {
-      // Laravel backend for database operations - always use port 8000
-      const LARAVEL_API_URL = "http://127.0.0.1:8000";
+      const LARAVEL_API_URL = LARAVEL_BASE_URL;
 
       console.log("Saving calibration to Laravel:", {
         device_name: "Moisture Meter",

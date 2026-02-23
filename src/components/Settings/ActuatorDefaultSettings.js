@@ -3,6 +3,7 @@
  * Default configuration and cache management for TimberMach Actuator System
  * Integrates with persistent storage to restore last state on startup
  */
+import { ACTUATOR_WS_URL } from "../../config/servers";
 
 // ============================================================================
 // DEFAULT ACTUATOR SETTINGS (FIXED STARTUP CONFIGURATION)
@@ -43,7 +44,7 @@ export const DEFAULT_ACTUATOR_SETTINGS = {
     
     // WebSocket Configuration
     websocket: {
-      url: 'ws://localhost:8080',
+      url: ACTUATOR_WS_URL,
       reconnectInterval: 5000,  // Attempt reconnect every 5 seconds
       autoReconnect: true
     },

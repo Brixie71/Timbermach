@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Square, Check, AlertCircle, Trash2, ArrowRight, Eye, ArrowLeft, RotateCcw } from 'lucide-react';
 
 const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_PYTHON_API_URL;
   
   // States
   const [step, setStep] = useState(1);
@@ -215,7 +215,7 @@ const SevenSegmentCalibration = ({ onComplete, onCancel }) => {
     setError(null);
     
     try {
-      const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+      const LARAVEL_API_URL = import.meta.env.VITE_API_BASE_URL;
       
       const response = await fetch(`${LARAVEL_API_URL}/api/calibration`, {
         method: 'POST',

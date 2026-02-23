@@ -1,9 +1,9 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Settings2, Save, RefreshCcw } from "lucide-react";
+import { FLASK_BASE_URL, LARAVEL_BASE_URL } from "../../config/servers";
 
-const PY_API = "http://localhost:5000";
-const LARAVEL_API =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const PY_API = FLASK_BASE_URL;
+const LARAVEL_API = LARAVEL_BASE_URL;
 
 const DEFAULT_PARAMS = {
   threshold1: 52,

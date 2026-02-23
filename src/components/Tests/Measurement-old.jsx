@@ -70,7 +70,7 @@ const ManualMeasurement = ({ onTestComplete, onPreviousTest, onMainPageReturn, t
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const captureCanvasRef = useRef(null);
-  const API_URL = 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_PYTHON_API_URL;
   
   const [videoResolution, setVideoResolution] = useState({ width: 1920, height: 1080 });
   

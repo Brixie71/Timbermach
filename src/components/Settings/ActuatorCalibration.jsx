@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { ACTUATOR_WS_URL, FLASK_BASE_URL } from '../../config/servers';
 
 const ActuatorCalibration = ({ onBack }) => {
   // State management
@@ -28,7 +29,7 @@ const ActuatorCalibration = ({ onBack }) => {
   const [success, setSuccess] = useState('');
 
   // Flask API base URL
-  const FLASK_API = 'http://localhost:5000';
+  const FLASK_API = FLASK_BASE_URL;
 
   // Helper function to safely format numbers
   const safeToFixed = (value, decimals = 2) => {
@@ -56,7 +57,7 @@ const ActuatorCalibration = ({ onBack }) => {
   // WebSocket connection
   const connectWebSocket = () => {
     try {
-      const ws = new WebSocket('ws://localhost:8080');
+      const ws = new WebSocket(ACTUATOR_WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {

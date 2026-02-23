@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { LARAVEL_BASE_URL } from "../../../config/servers";
 
 // Save Confirmation Modal Component
 const SaveConfirmationModal = ({
@@ -137,7 +138,7 @@ const SuccessModal = ({ isOpen, onClose, darkMode = false }) => {
 };
 
 const RVEdit = ({ data, darkMode = true, onClose, onSave }) => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+  const API_URL = LARAVEL_BASE_URL;
 
   const [formData, setFormData] = useState({
     strength_group: "high",

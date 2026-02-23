@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AlertTriangle, Save } from 'lucide-react';
+import { SENSOR_WS_URL } from "../../config/servers";
 
 const KiloNewtonGauge = ({ 
   testType,
@@ -52,7 +53,7 @@ const KiloNewtonGauge = ({
 
   const connectPressureWebSocket = () => {
     try {
-      const ws = new WebSocket('ws://localhost:5001');
+      const ws = new WebSocket(SENSOR_WS_URL);
       pressureWSRef.current = ws;
 
       ws.onopen = () => {

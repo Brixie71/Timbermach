@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { FaArrowLeft, FaSearch } from "react-icons/fa";
+import { laravelUrl } from "../../config/servers";
 
 // ==============================
 // Units & Conversions
@@ -167,7 +168,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
   async function fetchAllReferenceData() {
     setLoading(true);
     try {
-      const res = await axios.get("http://127.0.0.1:8000/api/reference-values");
+      const res = await axios.get(laravelUrl("/api/reference-values"));
       const rows = Array.isArray(res.data) ? res.data : [];
       setAllReferenceData(rows);
       setFilteredData(rows);
@@ -259,7 +260,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
       const speciesIdToSave = selectedSpecies.id ?? selectedSpecies.species_id;
       if (!speciesIdToSave) throw new Error("Selected species has no ID.");
 
-      const url = `http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`;
+      const url = laravelUrl(`/api/${dataType}-data/${specimenId}`);
       const payload = { species_id: speciesIdToSave };
 
       // PATCH -> PUT fallback (fixes 405)

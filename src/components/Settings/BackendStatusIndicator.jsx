@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Wifi, WifiOff, AlertCircle, CheckCircle } from "lucide-react";
+import { FLASK_BASE_URL, LARAVEL_BASE_URL, flaskUrl } from "../../config/servers";
 
 const BackendStatusIndicator = ({ compact = false }) => {
   const [laravelStatus, setLaravelStatus] = useState("checking");
   const [flaskStatus, setFlaskStatus] = useState("checking");
   const [showDetails, setShowDetails] = useState(false);
 
-  // Hardcoded URLs to ensure correct ports
-  // Laravel (PHP) = port 8000, Flask (Python) = port 5000
-  const LARAVEL_URL = "http://127.0.0.1:8000";
-  const FLASK_URL = "http://127.0.0.1:5000";
+  const LARAVEL_URL = LARAVEL_BASE_URL;
+  const FLASK_URL = FLASK_BASE_URL;
 
   const checkBackends = async () => {
     // Check Laravel
@@ -30,13 +29,10 @@ const BackendStatusIndicator = ({ compact = false }) => {
 
     // Check Flask
     try {
-      const flaskResponse = await fetch(
-        `http://127.0.0.1:5000/seven-segment/calibration`,
-        {
-          method: "GET",
-          headers: { Accept: "application/json" },
-        },
-      );
+      const flaskResponse = await fetch(flaskUrl("/seven-segment/calibration"), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
 
       if (flaskResponse.ok) {
         const data = await flaskResponse.json();

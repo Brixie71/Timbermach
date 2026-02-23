@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as d3 from "d3";
 import { ArrowLeft, ArrowRight, Navigation, Square, AlertTriangle, Activity } from 'lucide-react';
+import { ACTUATOR_WS_URL, SENSOR_WS_URL } from "../../config/servers";
 // ✅ Added Activity to the imports ^
 
 // Define the configuration for different test types
@@ -97,7 +98,7 @@ const KiloNewtonGauge = ({
    */
   const connectActuatorWebSocket = () => {
     try {
-      const ws = new WebSocket('ws://localhost:8080');
+      const ws = new WebSocket(ACTUATOR_WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -170,8 +171,7 @@ const KiloNewtonGauge = ({
    */
   const connectPressureWebSocket = () => {
     try {
-      // Changed from ws://localhost:5000 to ws://localhost:5001
-      const ws = new WebSocket('ws://localhost:5001');
+      const ws = new WebSocket(SENSOR_WS_URL);
       pressureWSRef.current = ws;
 
       ws.onopen = () => {

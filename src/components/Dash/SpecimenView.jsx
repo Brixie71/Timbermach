@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import SpecimenComparison from "./SpecimenComparison";
+import { laravelUrl } from "../../config/servers";
 
 // ==============================
 // Units & Conversions
@@ -352,7 +353,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   async function fetchReferenceData(speciesId) {
     setLoadingRef(true);
     try {
-      const res = await axios.get(`http://127.0.0.1:8000/api/reference-values/${speciesId}`);
+      const res = await axios.get(laravelUrl(`/api/reference-values/${speciesId}`));
       setReferenceData(res.data);
     } catch (e) {
       console.error("Reference fetch error:", e);
@@ -367,7 +368,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
     if (!specimenId) return;
     try {
       isRefreshingRef.current = true;
-      const res = await axios.get(`http://127.0.0.1:8000/api/${dataType}-data/${specimenId}`);
+      const res = await axios.get(laravelUrl(`/api/${dataType}-data/${specimenId}`));
       setCurrentData(res.data);
       await new Promise((r) => setTimeout(r, 150));
     } catch (e) {

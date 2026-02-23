@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Upload, Check, X, RotateCcw, Eye, Info } from "lucide-react";
+import { FLASK_BASE_URL, LARAVEL_BASE_URL } from "../../config/servers";
 
 /**
  * MoistureDebug.jsx
@@ -12,9 +13,8 @@ import { Upload, Check, X, RotateCcw, Eye, Info } from "lucide-react";
  */
 
 const MoistureDebug = () => {
-  const FLASK_API = "http://localhost:5000";
-  const LARAVEL_API =
-    import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+  const FLASK_API = FLASK_BASE_URL;
+  const LARAVEL_API = LARAVEL_BASE_URL;
 
   const [uploadedImage, setUploadedImage] = useState(null); // {file, preview}
   const [recognitionResult, setRecognitionResult] = useState(null);

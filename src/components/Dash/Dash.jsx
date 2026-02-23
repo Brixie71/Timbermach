@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import SpecimenView from "./SpecimenView";
 import DataEdit from "./SpecimenEdit";
+import { laravelUrl } from "../../config/servers";
 
 // Keep in sync with Header height in App/Header.jsx
 const HEADER_H = 64;
@@ -444,9 +445,9 @@ const Dash = ({ darkMode = false }) => {
     setLoading(true);
     try {
       const [compRes, shearRes, flexRes] = await Promise.all([
-        axios.get("http://127.0.0.1:8000/api/compressive-data"),
-        axios.get("http://127.0.0.1:8000/api/shear-data"),
-        axios.get("http://127.0.0.1:8000/api/flexure-data"),
+        axios.get(laravelUrl("/api/compressive-data")),
+        axios.get(laravelUrl("/api/shear-data")),
+        axios.get(laravelUrl("/api/flexure-data")),
       ]);
 
       setCompressiveData(extractRows(compRes.data));
@@ -482,7 +483,7 @@ const Dash = ({ darkMode = false }) => {
   const confirmDelete = async () => {
     try {
       await axios.delete(
-        `http://127.0.0.1:8000/api/${deleteDataType}-data/${deleteItemId}`
+        laravelUrl(`/api/${deleteDataType}-data/${deleteItemId}`)
       );
       setDeleteModalOpen(false);
       fetchAllData();

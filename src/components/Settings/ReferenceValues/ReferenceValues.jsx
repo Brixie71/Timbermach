@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import RVView from "./RVView";
 import RVEdit from "./RVEdit";
+import { LARAVEL_BASE_URL } from "../../../config/servers";
 
 // ============================================================================
 // ACTION MODAL COMPONENT (Same as Dash.jsx)
@@ -493,7 +494,7 @@ const DataTable = ({
 // ============================================================================
 
 const ReferenceValues = ({ darkMode = true }) => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+  const API_URL = LARAVEL_BASE_URL;
 
   // State
   const [referenceValues, setReferenceValues] = useState([]);
