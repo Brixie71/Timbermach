@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import {
   IoIosArrowForward,
   IoMdMenu,
@@ -8,15 +8,15 @@ import {
 } from "react-icons/io";
 import GlobalKeyboardProvider from "./components/GlobalKeyboardProvider";
 import Header from "./components/Header/Header";
-import WoodTests from "./components/Tests/WoodTests";
-import MoistureSettings from "./components/Settings/MoistureSettings";
-import MoistureDebug from "./components/Settings/MoistureDebug";
-import SevenSegmentCalibration from "./components/Settings/SevenSegmentCalibration";
-import ReferenceValues from "./components/Settings/ReferenceValues/ReferenceValues";
-import ActuatorControl from "./components/Settings/ActuatorControl";
-import ActuatorCalibration from "./components/Settings/ActuatorCalibration";
-import Dash from "./components/Dash/Dash";
-import Settings from "./components/Settings/Settings";
+const WoodTests = React.lazy(() => import("./components/Tests/WoodTests"));
+const MoistureSettings = React.lazy(() => import("./components/Settings/MoistureSettings"));
+const MoistureDebug = React.lazy(() => import("./components/Settings/MoistureDebug"));
+const SevenSegmentCalibration = React.lazy(() => import("./components/Settings/SevenSegmentCalibration"));
+const ReferenceValues = React.lazy(() => import("./components/Settings/ReferenceValues/ReferenceValues"));
+const ActuatorControl = React.lazy(() => import("./components/Settings/ActuatorControl"));
+const ActuatorCalibration = React.lazy(() => import("./components/Settings/ActuatorCalibration"));
+const Dash = React.lazy(() => import("./components/Dash/Dash"));
+const Settings = React.lazy(() => import("./components/Settings/Settings"));
 import "./App.css";
 
 function SidebarItem({ darkMode, active, icon, label, onClick }) {
@@ -57,7 +57,10 @@ function SidebarItem({ darkMode, active, icon, label, onClick }) {
 
 
 function App() {
-  
+  // Give enough time for background services to wind down before closing the window.
+  const SHUTDOWN_DELAY_MS = 6000;
+  const SHUTDOWN_LOG_STEP_MS = 700;
+
   const THEME_KEY = "timbermach:darkMode";
   const getInitialDarkMode = () => {
     try {
@@ -72,7 +75,12 @@ function App() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [activeItem, setActiveItem] = useState("dashboard");
   const [showPowerModal, setShowPowerModal] = useState(false);
+  const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [shutdownStatus, setShutdownStatus] = useState("Preparing shutdown...");
+  const [shutdownLogs, setShutdownLogs] = useState([]);
   const [darkMode, setDarkMode] = useState(getInitialDarkMode);
+  const shutdownTimerRef = useRef(null);
+  const shutdownLogTimersRef = useRef([]);
 
   useEffect(() => {
     try {
@@ -80,12 +88,73 @@ function App() {
     } catch {}
   }, [darkMode]);
 
+  useEffect(() => {
+    return () => {
+      if (shutdownTimerRef.current) {
+        clearTimeout(shutdownTimerRef.current);
+      }
+      shutdownLogTimersRef.current.forEach(clearTimeout);
+      shutdownLogTimersRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isShuttingDown) return undefined;
+
+    let rafId = null;
+    rafId = window.requestAnimationFrame(() => {
+      shutdownTimerRef.current = setTimeout(() => {
+        window.close();
+      }, SHUTDOWN_DELAY_MS);
+
+      const steps = [
+        "Initiating shutdown...",
+        "Stopping Laravel API...",
+        "Stopping Python API...",
+        "Stopping Hardware Bridge...",
+        "Finalizing cleanup...",
+        "Closing window...",
+      ];
+
+      steps.forEach((msg, index) => {
+        const timer = setTimeout(() => {
+          setShutdownStatus(msg);
+          setShutdownLogs((logs) => [...logs, `${new Date().toLocaleTimeString()}  ${msg}`]);
+        }, SHUTDOWN_LOG_STEP_MS * index);
+        shutdownLogTimersRef.current.push(timer);
+      });
+    });
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (shutdownTimerRef.current) {
+        clearTimeout(shutdownTimerRef.current);
+      }
+      shutdownLogTimersRef.current.forEach(clearTimeout);
+      shutdownLogTimersRef.current = [];
+    };
+  }, [isShuttingDown]);
+
   const toggleNav = () => {
     setIsNavOpen(!isNavOpen);
   };
 
   const closeNav = () => {
     setIsNavOpen(false);
+  };
+
+  const openPowerModal = () => {
+    setIsNavOpen(false);
+    setShowPowerModal(true);
+  };
+
+  const handlePowerOff = () => {
+    setShowPowerModal(false);
+    setShutdownStatus("Preparing shutdown...");
+    setShutdownLogs([]);
+    setIsShuttingDown(true);
   };
 
   // Explicitly define navigation handlers
@@ -242,7 +311,7 @@ function App() {
           subtitle={getPageTitle()}
           onToggleNav={toggleNav}
           onToggleTheme={() => setDarkMode(!darkMode)}
-          onPower={() => setShowPowerModal(true)}
+          onPower={openPowerModal}
         />
 
         {/* Sidebar */}
@@ -348,7 +417,7 @@ function App() {
           >
             <button
               type="button"
-              onClick={() => setShowPowerModal(true)}
+              onClick={openPowerModal}
               className={[
                 "w-full",
                 "flex items-center justify-center gap-2",
@@ -369,7 +438,15 @@ function App() {
 
         {/* Main Content - No Padding */}
         <div className="absolute top-[60px] left-0 right-0 bottom-0 overflow-auto">
-          {renderContent()}
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                Loading view...
+              </div>
+            }
+          >
+            {renderContent()}
+          </Suspense>
         </div>
 
         {/* Power Off Modal */}
@@ -391,11 +468,63 @@ function App() {
                 </button>
                 <button
                   className="px-4 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 transition-colors duration-300"
-                  onClick={() => window.close()}
+                  onClick={handlePowerOff}
                 >
                   Power Off
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {isShuttingDown && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div
+              className={[
+                "rounded-xl p-6 shadow-2xl w-[360px] max-w-[92vw] border",
+                darkMode
+                  ? "bg-gray-900 border-gray-700 text-white"
+                  : "bg-gray-50 border-gray-200 text-gray-900",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={[
+                    "h-7 w-7 animate-spin rounded-full border-2",
+                    darkMode
+                      ? "border-white/25 border-t-white"
+                      : "border-gray-400/50 border-t-gray-700",
+                  ].join(" ")}
+                />
+                <h3 className="text-lg font-semibold">Closing services…</h3>
+              </div>
+
+              <p
+                className={[
+                  "mt-3 text-sm",
+                  darkMode ? "text-gray-300" : "text-gray-600",
+                ].join(" ")}
+              >
+                {shutdownStatus}
+              </p>
+
+              <div
+                className={[
+                  "mt-3 max-h-36 overflow-y-auto rounded-md px-3 py-2 text-xs",
+                  darkMode ? "bg-gray-800 text-gray-200" : "bg-gray-100 text-gray-700",
+                ].join(" ")}
+              >
+                {(shutdownLogs.length ? shutdownLogs : ["Preparing shutdown..."]).map((log, idx) => (
+                  <div key={`${log}-${idx}`} className="py-0.5">
+                    {log}
+                  </div>
+                ))}
+              </div>
+
+              <p className={["mt-2 text-xs", darkMode ? "text-gray-400" : "text-gray-500"].join(" ")}>
+                Window will close automatically.
+              </p>
+
             </div>
           </div>
         )}

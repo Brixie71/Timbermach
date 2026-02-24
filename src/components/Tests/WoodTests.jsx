@@ -14,6 +14,7 @@ const StageResultView = ({
   onRetake = () => {},
   onContinue = () => {},
   onBackToMenu = () => {},
+  onReviewCapture = null,
 }) => {
   return (
     <div className={`w-full h-full flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
@@ -90,6 +91,19 @@ const StageResultView = ({
         >
           Retake
         </button>
+        {onReviewCapture && (
+          <button
+            type="button"
+            onClick={onReviewCapture}
+            className={`px-4 py-2 rounded-lg font-semibold ${
+              darkMode
+                ? "bg-gray-700 text-gray-100 hover:bg-gray-600"
+                : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+            }`}
+          >
+            Review Image
+          </button>
+        )}
         <button
           type="button"
           onClick={onContinue}
@@ -118,6 +132,8 @@ const WoodTests = ({ darkMode = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
+  const [reviewImage, setReviewImage] = useState(null);
+  const [showImageModal, setShowImageModal] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Test data storage
@@ -465,6 +481,7 @@ const WoodTests = ({ darkMode = false }) => {
       const height = Number(d.height || 0);
       const area = Number(d.areaMM2 || d.area || 0);
       const length = d.length !== null && d.length !== undefined ? Number(d.length) : null;
+      const reviewSrc = d.captureImage || d.overlayBase64 || null;
 
       const rows = [
         { label: "Width", value: width ? `${width.toFixed(2)} mm` : "N/A" },
@@ -476,19 +493,51 @@ const WoodTests = ({ darkMode = false }) => {
       }
 
       return (
-        <StageResultView
-          darkMode={darkMode}
-          title="Dimension Measurement Result"
-          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
-          rows={rows}
-          onRetake={() => setCurrentTestStage("dimensionTest")}
-          onContinue={() => setCurrentTestStage(getNextStage("dimensionTest"))}
-          onBackToMenu={() => {
-            setTestStarted(false);
-            setSelectedTest(null);
-            resetSelections();
-          }}
-        />
+        <>
+          <StageResultView
+            darkMode={darkMode}
+            title="Dimension Measurement Result"
+            subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+            rows={rows}
+            onRetake={() => setCurrentTestStage("dimensionTest")}
+            onContinue={() => setCurrentTestStage(getNextStage("dimensionTest"))}
+            onBackToMenu={() => {
+              setTestStarted(false);
+              setSelectedTest(null);
+              resetSelections();
+            }}
+            onReviewCapture={
+              reviewSrc
+                ? () => {
+                    setReviewImage(reviewSrc);
+                    setShowImageModal(true);
+                  }
+                : null
+            }
+          />
+          {showImageModal && reviewImage && (
+            <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+              <div className="bg-gray-900 text-white rounded-2xl shadow-2xl w-full max-w-4xl border border-gray-800 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+                  <div className="font-semibold">Captured Image</div>
+                  <button
+                    onClick={() => setShowImageModal(false)}
+                    className="text-sm text-gray-300 hover:text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="bg-black">
+                  <img
+                    src={reviewImage}
+                    alt="Captured"
+                    className="max-h-[70vh] w-full object-contain bg-black"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       );
     }
 
