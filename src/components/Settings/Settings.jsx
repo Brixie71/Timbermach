@@ -4,6 +4,7 @@ const Settings = ({
   onNavigateToMoistureSettings,
   onNavigateToMoistureTest,
   onNavigateToReferenceValues,
+  onNavigateToMeasurementSettings,
   onNavigateToActuatorControl,
   onNavigateToActuatorCalibration,
   darkMode = true,
@@ -17,6 +18,11 @@ const Settings = ({
       onNavigateToMoistureTest();
     } else if (option === "Reference Values" && onNavigateToReferenceValues) {
       onNavigateToReferenceValues();
+    } else if (
+      option === "Measurement Settings" &&
+      onNavigateToMeasurementSettings
+    ) {
+      onNavigateToMeasurementSettings();
     } else if (option === "Actuator Control" && onNavigateToActuatorControl) {
       onNavigateToActuatorControl();
     } else if (
@@ -92,6 +98,68 @@ const Settings = ({
                   className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}
                 >
                   Manage wood species reference data
+                </span>
+              </div>
+
+              {/* Arrow */}
+              <div
+                className={`flex-shrink-0 ${darkMode ? "text-gray-500" : "text-gray-400"}`}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </button>
+
+          {/* Measurement Settings Card */}
+          <button
+            onClick={() => handleButtonClick("Measurement Settings")}
+            className={`w-full border-2 p-3 ${
+              darkMode
+                ? "bg-gray-800 border-gray-700 hover:bg-gray-750 hover:border-gray-600"
+                : "bg-white border-gray-300 hover:bg-gray-50 hover:border-gray-400"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {/* Icon container */}
+              <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0 bg-amber-600">
+                <svg
+                  className="w-5 h-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+
+              {/* Text content */}
+              <div className="flex-grow text-left flex items-baseline gap-2">
+                <h3
+                  className={`text-xl font-bold ${darkMode ? "text-gray-100" : "text-gray-900"}`}
+                >
+                  Measurement Settings
+                </h3>
+                <span
+                  className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}
+                >
+                  Shape-detect defaults
                 </span>
               </div>
 

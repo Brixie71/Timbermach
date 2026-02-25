@@ -1,146 +1,49 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { LARAVEL_BASE_URL } from "../../../config/servers";
 
-// Save Confirmation Modal Component
-const SaveConfirmationModal = ({
-  isOpen,
-  onClose,
-  onConfirm,
-  darkMode = false,
-}) => {
-  if (!isOpen) return null;
+const baseShell = "h-full flex flex-col transition-colors";
+const lightShell = "bg-gray-50 text-gray-900";
+const darkShell = "bg-gray-900 text-gray-100";
 
-  return (
-    <div
-      className="absolute inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className={`shadow-2xl overflow-hidden max-w-md w-full mx-4 ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          className={`px-6 py-4 border-b-2 ${
-            darkMode
-              ? "bg-gray-900 border-gray-700"
-              : "bg-gray-100 border-gray-300"
-          }`}
-        >
-          <h3
-            className={`text-xl font-bold ${
-              darkMode ? "text-gray-100" : "text-gray-900"
-            }`}
-          >
-            Confirm Save Changes
-          </h3>
-        </div>
+const topBar = "sticky top-0 z-10 border-b backdrop-blur supports-[backdrop-filter]:bg-opacity-70";
+const topBarLight = "border-gray-200 bg-white/80";
+const topBarDark = "border-gray-800 bg-gray-900/70";
 
-        {/* Content */}
-        <div className="p-6">
-          <p
-            className={`text-lg mb-6 ${
-              darkMode ? "text-gray-300" : "text-gray-700"
-            }`}
-          >
-            Are you sure you want to save these changes? This will update the
-            reference value in the database.
-          </p>
+const card = "rounded-2xl border shadow-sm";
+const cardLight = "border-gray-200 bg-white";
+const cardDark = "border-gray-800 bg-gray-900/50";
 
-          {/* Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className={`flex-1 py-3 font-semibold transition-all ${
-                darkMode
-                  ? "bg-gray-700 text-gray-200 hover:bg-gray-600"
-                  : "bg-gray-300 text-gray-900 hover:bg-gray-400"
-              }`}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              className="flex-1 py-3 font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-all"
-            >
-              Save Changes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+const labelCls = "text-xs font-semibold text-gray-700";
+const labelClsDark = "text-gray-200";
 
-// Success Modal Component
-const SuccessModal = ({ isOpen, onClose, darkMode = false }) => {
-  if (!isOpen) return null;
+const inputBase =
+  "w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:border-transparent";
+const inputLight =
+  "border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-blue-500";
+const inputDark =
+  "border-gray-700 bg-gray-950 text-gray-100 placeholder:text-gray-500 focus:ring-blue-400";
 
-  return (
-    <div
-      className="absolute inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className={`shadow-2xl overflow-hidden max-w-md w-full mx-4 ${
-          darkMode ? "bg-gray-800" : "bg-white"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Success Icon */}
-        <div className="flex justify-center pt-8">
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
-            <svg
-              className="w-10 h-10 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={3}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
-        </div>
+const errorText = "text-[11px] text-red-500";
 
-        {/* Content */}
-        <div className="p-6 text-center">
-          <h3
-            className={`text-2xl font-bold mb-2 ${
-              darkMode ? "text-gray-100" : "text-gray-900"
-            }`}
-          >
-            Success!
-          </h3>
-          <p
-            className={`text-lg mb-6 ${
-              darkMode ? "text-gray-300" : "text-gray-700"
-            }`}
-          >
-            Reference value updated successfully
-          </p>
+const btn =
+  "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
+const btnGhostLight = "border border-gray-300 bg-white hover:bg-gray-50";
+const btnGhostDark = "border border-gray-700 bg-gray-900 hover:bg-gray-800";
+const btnPrimary = "bg-blue-600 text-white hover:bg-blue-700";
 
-          <button
-            onClick={onClose}
-            className="w-full py-3 font-semibold bg-green-500 text-white hover:bg-green-600 transition-all"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+const strengthOptions = [
+  { value: "high", label: "High Strength Group" },
+  { value: "moderately_high", label: "Moderately High Strength Group" },
+  { value: "medium", label: "Medium Strength Group" },
+];
+
+function readNum(v) {
+  const n = Number.parseFloat(String(v ?? ""));
+  return Number.isFinite(n) ? n : NaN;
+}
 
 const RVEdit = ({ data, darkMode = true, onClose, onSave }) => {
-  const API_URL = LARAVEL_BASE_URL;
-
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     strength_group: "high",
     common_name: "",
     botanical_name: "",
@@ -149,416 +52,166 @@ const RVEdit = ({ data, darkMode = true, onClose, onSave }) => {
     shear_parallel: "",
     bending_tension_parallel: "",
   });
-
-  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Initialize form data
     if (data) {
-      setFormData({
-        id: data.id,
+      setForm({
         strength_group: data.strength_group || "high",
         common_name: data.common_name || "",
         botanical_name: data.botanical_name || "",
-        compression_parallel: data.compression_parallel || "",
-        compression_perpendicular: data.compression_perpendicular || "",
-        shear_parallel: data.shear_parallel || "",
-        bending_tension_parallel: data.bending_tension_parallel || "",
+        compression_parallel: data.compression_parallel ?? "",
+        compression_perpendicular: data.compression_perpendicular ?? "",
+        shear_parallel: data.shear_parallel ?? "",
+        bending_tension_parallel: data.bending_tension_parallel ?? "",
       });
     }
   }, [data]);
 
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const shellCls = `${baseShell} ${darkMode ? darkShell : lightShell}`;
+  const barCls = `${topBar} ${darkMode ? topBarDark : topBarLight}`;
+  const cardCls = `${card} ${darkMode ? cardDark : cardLight}`;
+  const inputCls = `${inputBase} ${darkMode ? inputDark : inputLight}`;
+  const labelFinal = `${labelCls} ${darkMode ? labelClsDark : ""}`;
 
-    // Clear error for this field
-    if (errors[field]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.common_name.trim()) {
-      newErrors.common_name = "Common name is required";
-    }
-
-    const numericFields = [
-      "compression_parallel",
-      "compression_perpendicular",
-      "shear_parallel",
-      "bending_tension_parallel",
-    ];
-    numericFields.forEach((field) => {
-      const value = parseFloat(formData[field]);
-      if (isNaN(value) || value <= 0) {
-        newErrors[field] =
-          `${field.replace("_", " ")} must be a positive number`;
+  const validate = () => {
+    const next = {};
+    if (!form.common_name.trim()) next.common_name = "Common name is required";
+    ["compression_parallel", "compression_perpendicular", "shear_parallel", "bending_tension_parallel"].forEach(
+      (key) => {
+        const n = readNum(form[key]);
+        if (!Number.isFinite(n) || n <= 0) next[key] = "Must be a positive number";
       }
-    });
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    );
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
-    // Show confirmation modal instead of saving immediately
-    setShowSaveModal(true);
-  };
-
-  const confirmSave = async () => {
-    setShowSaveModal(false);
+    if (!validate()) return;
     setSaving(true);
-
     try {
-      const url = formData.id
-        ? `${API_URL}/api/reference-values/${formData.id}`
-        : `${API_URL}/api/reference-values`;
-
-      const method = formData.id ? "PUT" : "POST";
-
-      const updatePayload = {
-        strength_group: formData.strength_group,
-        common_name: formData.common_name,
-        botanical_name: formData.botanical_name || null,
-        compression_parallel: parseFloat(formData.compression_parallel),
-        compression_perpendicular: parseFloat(
-          formData.compression_perpendicular,
-        ),
-        shear_parallel: parseFloat(formData.shear_parallel),
-        bending_tension_parallel: parseFloat(formData.bending_tension_parallel),
+      const url = data?.id
+        ? `${LARAVEL_BASE_URL}/api/reference-values/${data.id}`
+        : `${LARAVEL_BASE_URL}/api/reference-values`;
+      const method = data?.id ? "PUT" : "POST";
+      const payload = {
+        strength_group: form.strength_group,
+        common_name: form.common_name.trim(),
+        botanical_name: form.botanical_name.trim() || null,
+        compression_parallel: readNum(form.compression_parallel),
+        compression_perpendicular: readNum(form.compression_perpendicular),
+        shear_parallel: readNum(form.shear_parallel),
+        bending_tension_parallel: readNum(form.bending_tension_parallel),
       };
-
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatePayload),
+        body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to save reference value");
-      }
-
-      // Show success modal
-      setShowSuccessModal(true);
-    } catch (error) {
-      console.error("Error saving data:", error);
-      alert(`Failed to save: ${error.message}`);
+      if (!res.ok) throw new Error(await res.text());
+      onSave?.();
+      onClose?.();
+    } catch (e) {
+      alert(e?.message || "Save failed");
+    } finally {
       setSaving(false);
     }
   };
 
-  const handleSuccessClose = () => {
-    setShowSuccessModal(false);
-    setSaving(false);
-    onSave();
-    onClose();
-  };
-
-  const getTitle = () => {
-    if (data?.id) {
-      return `Edit Reference Value | ${formData.common_name || "Unknown"}`;
-    }
-    return "Add New Reference Value";
-  };
-
   return (
-    <div
-      className={`relative w-full h-full ${darkMode ? "bg-gray-900" : "bg-white"}`}
-    >
+    <div className={shellCls}>
       {/* Header */}
-      <div
-        className={`flex items-center justify-between px-6 py-3 border-b-2 ${
-          darkMode ? "border-gray-700 bg-gray-800" : "border-black bg-gray-100"
-        }`}
-      >
-        <h2
-          className={`text-2xl font-bold ${darkMode ? "text-gray-100" : "text-gray-900"}`}
-        >
-          {getTitle()}
-        </h2>
-        <button
-          onClick={onClose}
-          className={`text-3xl ${darkMode ? "text-gray-200 hover:text-gray-400" : "text-gray-900 hover:text-gray-600"}`}
-        >
-          ✕
-        </button>
+      <div className={barCls}>
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-base font-extrabold tracking-tight">
+              {data ? "Edit Reference Value" : "Add Reference Value"}
+            </div>
+            <div className={`mt-0.5 truncate text-xs ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+              {form.common_name || "New entry"}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
+            Close
+          </button>
+        </div>
       </div>
 
-      {/* Form Content */}
-      <div className="h-[calc(100%-60px)] overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* Strength Group */}
-          <div>
-            <label
-              className={`block text-sm font-semibold mb-2 ${
-                darkMode ? "text-gray-300" : "text-gray-900"
-              }`}
-            >
-              Strength Group <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.strength_group}
-              onChange={(e) => handleChange("strength_group", e.target.value)}
-              className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                errors.strength_group
-                  ? "border-red-500"
-                  : darkMode
-                    ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400"
-                    : "bg-white border-gray-300 text-gray-900 focus:border-blue-500"
-              }`}
-            >
-              <option value="high">High Strength Group</option>
-              <option value="moderately_high">
-                Moderately High Strength Group
-              </option>
-              <option value="medium">Medium Strength Group</option>
-            </select>
-            {errors.strength_group && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.strength_group}
-              </p>
-            )}
-          </div>
-
-          {/* Common Name */}
-          <div>
-            <label
-              className={`block text-sm font-semibold mb-2 ${
-                darkMode ? "text-gray-300" : "text-gray-900"
-              }`}
-            >
-              Common Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.common_name}
-              onChange={(e) => handleChange("common_name", e.target.value)}
-              placeholder="e.g., Narra"
-              className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                errors.common_name
-                  ? "border-red-500"
-                  : darkMode
-                    ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                    : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-              }`}
-            />
-            {errors.common_name && (
-              <p className="text-red-500 text-sm mt-1">{errors.common_name}</p>
-            )}
-          </div>
-
-          {/* Botanical Name */}
-          <div>
-            <label
-              className={`block text-sm font-semibold mb-2 ${
-                darkMode ? "text-gray-300" : "text-gray-900"
-              }`}
-            >
-              Botanical Name
-            </label>
-            <input
-              type="text"
-              value={formData.botanical_name}
-              onChange={(e) => handleChange("botanical_name", e.target.value)}
-              placeholder="e.g., Pterocarpus indicus"
-              className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                darkMode
-                  ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                  : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-              }`}
-            />
-          </div>
-
-          {/* Mechanical Properties Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Compression Parallel */}
-            <div>
-              <label
-                className={`block text-sm font-semibold mb-2 ${
-                  darkMode ? "text-gray-300" : "text-gray-900"
-                }`}
+      {/* Content */}
+      <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-4">
+        <div className={`${cardCls} p-4 space-y-4`}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Strength Group</label>
+              <select
+                value={form.strength_group}
+                onChange={(e) => setForm((prev) => ({ ...prev, strength_group: e.target.value }))}
+                className={`${inputCls} pr-8`}
               >
-                Compression Parallel (Fc) *{" "}
-                <span className="text-xs font-normal">(MPa)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.compression_parallel}
-                onChange={(e) =>
-                  handleChange("compression_parallel", e.target.value)
-                }
-                placeholder="0.00"
-                className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                  errors.compression_parallel
-                    ? "border-red-500"
-                    : darkMode
-                      ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-                }`}
-              />
-              {errors.compression_parallel && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.compression_parallel}
-                </p>
-              )}
+                {strengthOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {errors.strength_group ? <div className={errorText}>{errors.strength_group}</div> : null}
             </div>
 
-            {/* Compression Perpendicular */}
-            <div>
-              <label
-                className={`block text-sm font-semibold mb-2 ${
-                  darkMode ? "text-gray-300" : "text-gray-900"
-                }`}
-              >
-                Compression Perpendicular (Fc⊥) *{" "}
-                <span className="text-xs font-normal">(MPa)</span>
-              </label>
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Common Name *</label>
               <input
-                type="number"
-                step="0.01"
-                value={formData.compression_perpendicular}
-                onChange={(e) =>
-                  handleChange("compression_perpendicular", e.target.value)
-                }
-                placeholder="0.00"
-                className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                  errors.compression_perpendicular
-                    ? "border-red-500"
-                    : darkMode
-                      ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-                }`}
+                type="text"
+                value={form.common_name}
+                onChange={(e) => setForm((prev) => ({ ...prev, common_name: e.target.value }))}
+                className={inputCls}
               />
-              {errors.compression_perpendicular && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.compression_perpendicular}
-                </p>
-              )}
+              {errors.common_name ? <div className={errorText}>{errors.common_name}</div> : null}
             </div>
 
-            {/* Shear Parallel */}
-            <div>
-              <label
-                className={`block text-sm font-semibold mb-2 ${
-                  darkMode ? "text-gray-300" : "text-gray-900"
-                }`}
-              >
-                Shear Parallel (Fv) *{" "}
-                <span className="text-xs font-normal">(MPa)</span>
-              </label>
+            <div className="space-y-1.5">
+              <label className={labelFinal}>Botanical Name</label>
               <input
-                type="number"
-                step="0.01"
-                value={formData.shear_parallel}
-                onChange={(e) => handleChange("shear_parallel", e.target.value)}
-                placeholder="0.00"
-                className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                  errors.shear_parallel
-                    ? "border-red-500"
-                    : darkMode
-                      ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-                }`}
+                type="text"
+                value={form.botanical_name}
+                onChange={(e) => setForm((prev) => ({ ...prev, botanical_name: e.target.value }))}
+                className={inputCls}
               />
-              {errors.shear_parallel && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.shear_parallel}
-                </p>
-              )}
-            </div>
-
-            {/* Bending & Tension */}
-            <div>
-              <label
-                className={`block text-sm font-semibold mb-2 ${
-                  darkMode ? "text-gray-300" : "text-gray-900"
-                }`}
-              >
-                Bending & Tension (FbFt) *{" "}
-                <span className="text-xs font-normal">(MPa)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.bending_tension_parallel}
-                onChange={(e) =>
-                  handleChange("bending_tension_parallel", e.target.value)
-                }
-                placeholder="0.00"
-                className={`w-full px-4 py-3 border-2 focus:outline-none ${
-                  errors.bending_tension_parallel
-                    ? "border-red-500"
-                    : darkMode
-                      ? "bg-gray-800 border-gray-600 text-gray-100 focus:border-blue-400 placeholder-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 focus:border-blue-500 placeholder-gray-400"
-                }`}
-              />
-              {errors.bending_tension_parallel && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.bending_tension_parallel}
-                </p>
-              )}
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-4 pt-4">
-            <button
-              onClick={onClose}
-              className={`flex-1 py-3 font-bold text-lg transition-all ${
-                darkMode
-                  ? "bg-gray-700 text-gray-200 hover:bg-gray-600"
-                  : "bg-gray-300 text-gray-900 hover:bg-gray-400"
-              }`}
-            >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["compression_parallel", "Compression Parallel (Fc)"],
+              ["compression_perpendicular", "Compression ⟂ (Fc⊥)"],
+              ["shear_parallel", "Shear Parallel (Fv)"],
+              ["bending_tension_parallel", "Bending & Tension (FbFt)"],
+            ].map(([key, label]) => (
+              <div key={key} className="space-y-1.5">
+                <label className={labelFinal}>{label} (MPa) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form[key]}
+                  onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className={inputCls}
+                />
+                {errors[key] ? <div className={errorText}>{errors[key]}</div> : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
               Cancel
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className={`flex-1 py-3 font-bold text-lg transition-all ${
-                saving
-                  ? "bg-gray-400 text-gray-600 cursor-not-allowed"
-                  : "bg-blue-500 text-white hover:bg-blue-600 active:scale-[0.99]"
-              }`}
-            >
-              {saving ? "Saving..." : "Save Changes"}
+            <button type="button" onClick={handleSubmit} disabled={saving} className={`${btn} ${btnPrimary}`}>
+              {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>
       </div>
-
-      {/* Save Confirmation Modal */}
-      <SaveConfirmationModal
-        isOpen={showSaveModal}
-        onClose={() => setShowSaveModal(false)}
-        onConfirm={confirmSave}
-        darkMode={darkMode}
-      />
-
-      {/* Success Modal */}
-      <SuccessModal
-        isOpen={showSuccessModal}
-        onClose={handleSuccessClose}
-        darkMode={darkMode}
-      />
     </div>
   );
 };

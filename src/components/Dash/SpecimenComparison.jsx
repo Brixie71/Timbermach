@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { FaArrowLeft, FaSearch } from "react-icons/fa";
 import { laravelUrl } from "../../config/servers";
@@ -7,8 +7,8 @@ import { laravelUrl } from "../../config/servers";
 // Units & Conversions
 // ==============================
 const CONTACT_MM = 76.2;
-const CONTACT_AREA_MM2 = CONTACT_MM * CONTACT_MM; // 5806.44 mm²
-const BAR_TO_MPA = 0.1; // bar -> MPa (N/mm²)
+const CONTACT_AREA_MM2 = CONTACT_MM * CONTACT_MM; // 5806.44 mm^2
+const BAR_TO_MPA = 0.1; // bar -> MPa (N/mm^2)
 const FLEXURE_SPAN_MM = 584.2;
 
 // ==============================
@@ -49,7 +49,7 @@ const calcPointLoadN = (row) => {
   const bar = n2(row?.pressure_bar, 0);
   if (bar <= 0) return 0;
 
-  const mpa = barToMpa(bar); // MPa == N/mm²
+  const mpa = barToMpa(bar); // MPa == N/mm^2
   return mpa * CONTACT_AREA_MM2; // N
 };
 
@@ -85,7 +85,7 @@ const calcAreaByMode = (mode, row) => {
     case "shear_single":
       return W > 0 && L > 0 ? W * L : 0;
     case "shear_double":
-      return W > 0 && L > 0 ? (W * L) * 2 : 0;
+      return W > 0 && L > 0 ? W * L * 2 : 0;
     case "flexure":
       return W > 0 && L > 0 ? W * L : 0;
     default:
@@ -93,13 +93,13 @@ const calcAreaByMode = (mode, row) => {
   }
 };
 
-// Stress in MPa (N/mm²)
+// Stress in MPa (N/mm^2)
 const calcExperimentalStressMPa = (dataType, row) => {
   const dt = String(dataType || "").toLowerCase();
   const mode = getTestMode(dt, row);
 
   const P = calcPointLoadN(row); // N
-  const A = calcAreaByMode(mode, row); // mm²
+  const A = calcAreaByMode(mode, row); // mm^2
 
   const b = n2(row?.base, 0);
   const h = n2(row?.height, 0);
@@ -121,9 +121,9 @@ const calcExperimentalStressMPa = (dataType, row) => {
 // UI Bits
 // ==============================
 function StatTile({ label, value, hint, accent = "blue", darkMode }) {
-  const border = darkMode ? "border-gray-800" : "border-gray-200";
-  const labelCls = darkMode ? "text-gray-300" : "text-gray-600";
-  const hintCls = darkMode ? "text-gray-400" : "text-gray-500";
+  const border = darkMode ? "border-zinc-800" : "border-zinc-200";
+  const labelCls = darkMode ? "text-zinc-300" : "text-zinc-600";
+  const hintCls = darkMode ? "text-zinc-400" : "text-zinc-500";
   const accentCls =
     accent === "green"
       ? darkMode
@@ -153,12 +153,15 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
 
   const [selectedSpecies, setSelectedSpecies] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const dropdownWrapRef = useRef(null);
+  const extractRows = (payload) => {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    return [];
+  };
 
   useEffect(() => {
     fetchAllReferenceData();
@@ -169,7 +172,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
     setLoading(true);
     try {
       const res = await axios.get(laravelUrl("/api/reference-values"));
-      const rows = Array.isArray(res.data) ? res.data : [];
+      const rows = extractRows(res.data);
       setAllReferenceData(rows);
       setFilteredData(rows);
 
@@ -203,23 +206,13 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
     );
   }, [searchQuery, allReferenceData]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (!dropdownWrapRef.current) return;
-      if (!dropdownWrapRef.current.contains(e.target)) setShowDropdown(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   function handleSpeciesSelect(species) {
     setSelectedSpecies(species);
     setSearchQuery(species.common_name || species.species_name || species.botanical_name || "");
-    setShowDropdown(false);
     setSaveSuccess(false);
   }
 
-  // ✅ Experimental stress uses pressure_bar -> MPa -> N
+  // Experimental stress uses pressure_bar -> MPa -> N
   const experimentalStress = useMemo(() => calcExperimentalStressMPa(dataType, data || {}), [dataType, data]);
 
   const referenceStress = useMemo(() => {
@@ -289,23 +282,40 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
     }
   }
 
-  const shell = darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900";
-  const border = darkMode ? "border-gray-800" : "border-gray-200";
-  const glassHeader = darkMode ? "bg-gray-900/70" : "bg-white/70";
-  const glassPanel = darkMode ? "bg-gray-900/60" : "bg-white/80";
-  const textDim = darkMode ? "text-gray-300" : "text-gray-600";
+  const shell = darkMode ? "bg-slate-900 text-slate-100" : "bg-zinc-50 text-zinc-900";
+  const border = darkMode ? "border-slate-700" : "border-zinc-200";
+  const glassHeader = darkMode ? "bg-slate-900/75" : "bg-white/80";
+  const glassPanel = darkMode ? "bg-slate-800/65" : "bg-white/85";
+  const textDim = darkMode ? "text-slate-300" : "text-zinc-600";
 
   const specimenName = data?.specimen_name || data?.["Specimen Name"] || "Unknown";
   const accAccent = accuracy >= 90 ? "green" : accuracy >= 60 ? "blue" : "red";
   const diffAccent = difference >= 0 ? "green" : "red";
 
+  const metricLabel = (() => {
+    const dt = String(dataType || "").toLowerCase();
+    if (dt === "compressive") return "Compression (Fc)";
+    if (dt === "shear") return "Shear (Fv)";
+    return "Flexure (Fb/Ft)";
+  })();
+
+  const metricValue = (row) => {
+    const dt = String(dataType || "").toLowerCase();
+    if (dt === "compressive") return n2(row?.compression_parallel, null);
+    if (dt === "shear") return n2(row?.shear_parallel, null);
+    return n2(row?.bending_tension_parallel, null);
+  };
+
   return (
-    <div className={`w-full h-full flex flex-col ${shell}`} style={{ fontFamily: "JustSans, system-ui, sans-serif" }}>
+    <div
+      className={`w-full h-full flex flex-col ${shell}`}
+      style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}
+    >
       <div className={["sticky top-0 z-20 border-b", border, glassHeader, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
         <div className="h-[56px] px-4 flex items-center justify-between">
           <div className="min-w-0">
-            <div className="text-[14px] font-extrabold tracking-wide truncate">Compare • {specimenName}</div>
-            <div className={["text-[12px] truncate", textDim].join(" ")}>{cap(dataType)} • pick a reference species</div>
+            <div className="text-[14px] font-extrabold tracking-wide truncate">Compare - {specimenName}</div>
+            <div className={["text-[12px] truncate", textDim].join(" ")}>{cap(dataType)} - pick a reference species</div>
           </div>
 
           <button
@@ -319,118 +329,128 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        <div ref={dropdownWrapRef} className="relative">
-          <div className={["rounded-2xl border overflow-hidden", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
-            <div className={["flex items-center gap-2 px-4 h-[52px] border-b", border].join(" ")}>
-              <FaSearch className={darkMode ? "text-gray-400" : "text-gray-500"} />
-              <input
-                type="text"
-                placeholder={loading ? "Loading species..." : "Search species"}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setShowDropdown(true)}
-                className={["flex-1 text-[13px] bg-transparent outline-none", darkMode ? "placeholder-gray-400 text-gray-100" : "placeholder-gray-500 text-gray-900"].join(" ")}
-              />
-              <button
-                onClick={() => setShowDropdown((v) => !v)}
-                className={["text-[12px] font-extrabold px-3 py-2 rounded-xl transition active:scale-[0.98]", darkMode ? "bg-white/10 hover:bg-white/15" : "bg-black/5 hover:bg-black/10"].join(" ")}
-                type="button"
-              >
-                {showDropdown ? "Hide" : "List"}
-              </button>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Left column: results + save */}
+          <div className="space-y-3">
+            {selectedSpecies ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <StatTile label="Accuracy" value={`${n2(accuracy).toFixed(2)}%`} hint="Experimental / Reference x 100" accent={accAccent} darkMode={darkMode} />
+                  <StatTile label="Experimental" value={`${n2(experimentalStress).toFixed(2)} MPa`} hint="Uses pressure -> MPa -> N" darkMode={darkMode} />
+                  <StatTile label="Reference" value={`${n2(referenceStress).toFixed(2)} MPa`} hint="From selected species" darkMode={darkMode} />
+                </div>
 
-            {showDropdown ? (
-              <div className="max-h-72 overflow-y-auto">
-                {filteredData.length ? (
-                  filteredData.map((species, idx) => {
-                    const id = species.id || species.species_id || idx;
-                    const label = species.common_name || species.species_name || species.botanical_name || "Unknown";
-                    const active =
-                      String(species.id || species.species_id) ===
-                      String(selectedSpecies?.id || selectedSpecies?.species_id);
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className={["rounded-2xl border p-4", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
+                    <div className="text-[12px] font-extrabold tracking-widest uppercase opacity-90">Selected Species</div>
+                    <div className="mt-1 text-[15px] font-extrabold">
+                      {selectedSpecies.common_name || selectedSpecies.species_name || selectedSpecies.botanical_name || "Unknown"}
+                    </div>
+                    <div className={["mt-2 text-[12px] font-semibold", darkMode ? "text-blue-300" : "text-blue-700"].join(" ")}>
+                      {metricLabel}: {Number.isFinite(metricValue(selectedSpecies)) ? `${metricValue(selectedSpecies).toFixed(2)} MPa` : "—"}
+                    </div>
+                  </div>
 
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => handleSpeciesSelect(species)}
-                        className={["w-full text-left px-4 py-3 border-b last:border-b-0 transition", border, darkMode ? (active ? "bg-white/10" : "hover:bg-white/5") : active ? "bg-black/5" : "hover:bg-black/5"].join(" ")}
-                        type="button"
-                      >
-                        <div className="text-[13px] font-extrabold truncate">{label}</div>
-                        {species.botanical_name ? <div className={["text-[11px] truncate", textDim].join(" ")}>{species.botanical_name}</div> : null}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className={["px-4 py-10 text-center text-[13px]", textDim].join(" ")}>No species found</div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {selectedSpecies ? (
-          <>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <StatTile label="Accuracy" value={`${n2(accuracy).toFixed(2)}%`} hint="Experimental / Reference × 100" accent={accAccent} darkMode={darkMode} />
-              <StatTile label="Experimental" value={`${n2(experimentalStress).toFixed(2)} MPa`} hint="Uses pressure_bar→MPa→N" darkMode={darkMode} />
-              <StatTile label="Reference" value={`${n2(referenceStress).toFixed(2)} MPa`} hint="From selected species" darkMode={darkMode} />
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div className={["rounded-2xl border p-4", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
-                <div className="text-[12px] font-extrabold tracking-widest uppercase opacity-90">Selected Species</div>
-                <div className="mt-1 text-[15px] font-extrabold">{selectedSpecies.common_name || selectedSpecies.species_name || selectedSpecies.botanical_name || "Unknown"}</div>
-              </div>
-
-              <div className={["rounded-2xl border p-4", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
-                <div className="grid grid-cols-2 gap-3">
-                  <StatTile label="Difference" value={`${difference >= 0 ? "+" : ""}${n2(difference).toFixed(2)} MPa`} hint="Experimental − Reference" accent={diffAccent} darkMode={darkMode} />
-                  <StatTile label="% Diff" value={`${percentDiff >= 0 ? "+" : ""}${n2(percentDiff).toFixed(2)}%`} hint="(Diff/Ref)×100" accent={diffAccent} darkMode={darkMode} />
-                  <StatTile label="Ratio" value={`${n2(ratio).toFixed(3)}`} hint="Experimental / Reference" darkMode={darkMode} />
-                  <div className="rounded-xl border p-3" style={{ borderColor: darkMode ? "#1f2937" : "#e5e7eb" }}>
-                    <div className={["text-[11px] font-extrabold tracking-wide", textDim].join(" ")}>Dates</div>
-                    <div className={["mt-1 text-[12px] font-semibold", darkMode ? "text-gray-100" : "text-gray-900"].join(" ")}>
-                      T: {formatDbDateTime(data?.created_at)} <br />
-                      U: {formatDbDateTime(data?.updated_at)}
+                  <div className={["rounded-2xl border p-4", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
+                    <div className="grid grid-cols-2 gap-3">
+                      <StatTile label="Difference" value={`${difference >= 0 ? "+" : ""}${n2(difference).toFixed(2)} MPa`} hint="Experimental - Reference" accent={diffAccent} darkMode={darkMode} />
+                      <StatTile label="% Diff" value={`${percentDiff >= 0 ? "+" : ""}${n2(percentDiff).toFixed(2)}%`} hint="(Diff/Ref)x100" accent={diffAccent} darkMode={darkMode} />
+                      <StatTile label="Ratio" value={`${n2(ratio).toFixed(3)}`} hint="Experimental / Reference" darkMode={darkMode} />
+                      <div className="rounded-xl border p-3" style={{ borderColor: darkMode ? "#27272a" : "#e4e4e7" }}>
+                        <div className={["text-[11px] font-extrabold tracking-wide", textDim].join(" ")}>Dates</div>
+                        <div className={["mt-1 text-[12px] font-semibold", darkMode ? "text-zinc-100" : "text-zinc-900"].join(" ")}>
+                          T: {formatDbDateTime(data?.created_at)} <br />
+                          U: {formatDbDateTime(data?.updated_at)}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
+              </>
+            ) : (
+              <div className={["text-center py-12", darkMode ? "text-zinc-400" : "text-zinc-500"].join(" ")}>
+                <FaSearch className="text-4xl mx-auto mb-3 opacity-50" />
+                <p className="text-sm">Search and select a wood species to compare.</p>
               </div>
+            )}
+
+            <div className="rounded-2xl border p-4 flex flex-col gap-2" style={{ background: darkMode ? "rgba(24,24,27,0.7)" : "rgba(255,255,255,0.94)", borderColor: darkMode ? "#27272a" : "#e4e4e7" }}>
+              <div className="text-[12px] font-extrabold uppercase opacity-80">Save</div>
+              <button
+                onClick={handleSaveComparison}
+                disabled={!selectedSpecies || saving || saveSuccess}
+                className={[
+                  "w-full py-3 px-4 rounded-xl font-extrabold text-[13px] transition active:scale-[0.99]",
+                  !selectedSpecies
+                      ? darkMode
+                        ? "bg-white/5 text-zinc-500 cursor-not-allowed"
+                        : "bg-black/5 text-zinc-400 cursor-not-allowed"
+                    : saveSuccess
+                      ? "bg-emerald-600 text-white cursor-default"
+                      : saving
+                        ? darkMode
+                          ? "bg-white/5 text-zinc-400 cursor-wait"
+                          : "bg-black/5 text-zinc-500 cursor-wait"
+                        : "bg-blue-700 text-white hover:bg-blue-800",
+                ].join(" ")}
+              >
+                {saveSuccess ? "Saved" : saving ? "Saving..." : "Save Reference"}
+              </button>
+            </div>
+          </div>
+
+          {/* Right column: search + list */}
+          <div className={["rounded-2xl border overflow-hidden flex flex-col", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
+            <div className={["flex items-center gap-2 px-4 h-[52px] border-b", border].join(" ")}>
+              <FaSearch className={darkMode ? "text-zinc-400" : "text-zinc-500"} />
+              <input
+                type="text"
+                placeholder={loading ? "Loading species..." : `Search species (${metricLabel})`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={["flex-1 text-[13px] bg-transparent outline-none", darkMode ? "placeholder-zinc-400 text-zinc-100" : "placeholder-zinc-500 text-zinc-900"].join(" ")}
+              />
             </div>
 
-            <div style={{ height: 86 }} />
-          </>
-        ) : (
-          <div className={["text-center py-12", darkMode ? "text-gray-400" : "text-gray-500"].join(" ")}>
-            <FaSearch className="text-4xl mx-auto mb-3 opacity-50" />
-            <p className="text-sm">Search and select a wood species to compare.</p>
-          </div>
-        )}
-      </div>
+            <div className="max-h-[620px] overflow-y-auto">
+              {filteredData.length ? (
+                filteredData.map((species, idx) => {
+                  const id = species.id || species.species_id || idx;
+                  const label = species.common_name || species.species_name || species.botanical_name || "Unknown";
+                  const active =
+                    String(species.id || species.species_id) === String(selectedSpecies?.id || selectedSpecies?.species_id);
+                  const mVal = metricValue(species);
 
-      <div className={["sticky bottom-0 z-20 border-t px-4 py-3", border, glassHeader, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
-        <button
-          onClick={handleSaveComparison}
-          disabled={!selectedSpecies || saving || saveSuccess}
-          className={[
-            "w-full py-3 px-4 rounded-xl font-extrabold text-[13px] transition active:scale-[0.99]",
-            !selectedSpecies
-              ? darkMode
-                ? "bg-white/5 text-gray-500 cursor-not-allowed"
-                : "bg-black/5 text-gray-400 cursor-not-allowed"
-              : saveSuccess
-                ? "bg-emerald-600 text-white cursor-default"
-                : saving
-                  ? darkMode
-                    ? "bg-white/5 text-gray-400 cursor-wait"
-                    : "bg-black/5 text-gray-500 cursor-wait"
-                  : "bg-blue-600 text-white hover:bg-blue-700",
-          ].join(" ")}
-        >
-          {saveSuccess ? "✓ Saved" : saving ? "Saving..." : "Save Reference"}
-        </button>
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => handleSpeciesSelect(species)}
+                      className={[
+                        "w-full text-left px-4 py-3 border-b last:border-b-0 transition",
+                        border,
+                        darkMode ? (active ? "bg-white/10" : "hover:bg-white/5") : active ? "bg-black/5" : "hover:bg-black/5",
+                      ].join(" ")}
+                      type="button"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-extrabold truncate">{label}</div>
+                          {species.botanical_name ? <div className={["text-[11px] truncate", textDim].join(" ")}>{species.botanical_name}</div> : null}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[11px] uppercase tracking-wide opacity-70">{metricLabel}</div>
+                          <div className="text-[13px] font-semibold">{Number.isFinite(mVal) ? `${mVal.toFixed(2)} MPa` : "—"}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className={["px-4 py-10 text-center text-[13px]", textDim].join(" ")}>No species found</div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

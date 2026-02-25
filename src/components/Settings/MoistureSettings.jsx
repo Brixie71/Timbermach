@@ -120,251 +120,151 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-5">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onBack}
-              className="text-2xl hover:text-blue-400 transition-colors"
-            >
-              ←
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-3">
-                <Settings className="w-7 h-7 text-blue-400" />
-                Moisture Settings
-              </h1>
-              <p className="text-sm text-gray-400 mt-1">
-                Manage your seven-segment display calibrations
-              </p>
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="text-2xl hover:text-blue-400 transition-colors">
+            ←
+          </button>
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-blue-300 font-semibold">Moisture</div>
+            <div className="text-xl font-bold flex items-center gap-2">
+              <Settings className="w-5 h-5 text-blue-400" />
+              Seven-Segment Calibrations
             </div>
           </div>
-          
-          {onEditCalibration && (
-            <button
-              onClick={() => onEditCalibration()}
-              className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              New Calibration
-            </button>
-          )}
         </div>
+        {onEditCalibration && (
+          <button
+            onClick={() => onEditCalibration()}
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl font-semibold flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Calibration
+          </button>
+        )}
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        
-        {/* Error Message */}
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
         {error && (
-          <div className="bg-red-900/30 border border-red-700 text-red-200 px-5 py-4 rounded-xl mb-6 flex items-center gap-3">
-            <X className="w-5 h-5 flex-shrink-0" />
-            <span>{error}</span>
+          <div className="rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-sm text-red-100">
+            {error}
           </div>
         )}
 
-        {/* Loading State */}
         {isLoading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
-            <p className="mt-4 text-gray-400">Loading calibrations...</p>
-          </div>
-        ) : calibrations.length === 0 ? (
-          // Empty State
-          <div className="bg-gray-800 rounded-2xl p-12 text-center">
-            <Settings className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-300 mb-2">
-              No Calibrations Found
-            </h3>
-            <p className="text-gray-400 mb-6">
-              You haven't created any calibration settings yet.
-            </p>
-            {onEditCalibration && (
-              <button
-                onClick={() => onEditCalibration()}
-                className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-semibold inline-flex items-center gap-2 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                Create First Calibration
-              </button>
-            )}
-          </div>
+          <div className="flex items-center justify-center py-12 text-gray-300 text-sm">Loading…</div>
         ) : (
-          <>
-            {/* Active Calibration Card */}
-            {activeCalibration && (
-              <div className="bg-gradient-to-r from-green-900 to-green-800 rounded-2xl p-6 mb-6 border-2 border-green-600">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Check className="w-5 h-5 text-green-400" />
-                      <span className="text-green-300 font-semibold text-sm">ACTIVE CALIBRATION</span>
-                    </div>
-                    <h3 className="text-2xl font-bold mb-2">
-                      {activeCalibration.device_name || 'Default Moisture Meter'}
-                    </h3>
-                    <div className="flex items-center gap-4 text-sm text-gray-300">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {formatDate(activeCalibration.created_at)}
-                      </span>
-                      <span className="bg-green-700 px-3 py-1 rounded-lg">
-                        {activeCalibration.num_digits} Digits
-                      </span>
-                      {activeCalibration.has_decimal_point && (
-                        <span className="bg-green-700 px-3 py-1 rounded-lg">
-                          {activeCalibration.decimal_position === 1 ? 'XX.X' : 'X.XX'}
-                        </span>
-                      )}
-                    </div>
-                    {activeCalibration.notes && (
-                      <p className="text-gray-300 mt-3 text-sm">
-                        {activeCalibration.notes}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditCalibration(activeCalibration)}
-                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => viewCalibrationDetails(activeCalibration)}
-                      className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-xl flex items-center gap-2 transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Details
-                    </button>
-                  </div>
-                </div>
+          <div className="rounded-2xl border border-gray-800 bg-gray-900/70 overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-800">
+              <div className="text-sm text-gray-300">
+                Total: {calibrations.length} | Active: {activeCalibration ? activeCalibration.id : "None"}
               </div>
-            )}
+              <div className="text-xs text-gray-500">Tap a row for actions</div>
+            </div>
 
-            {/* All Calibrations List */}
-            <div className="bg-gray-800 rounded-2xl overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-700">
-                <h2 className="text-xl font-semibold">All Calibrations</h2>
-                <p className="text-sm text-gray-400 mt-1">
-                  {calibrations.length} calibration{calibrations.length !== 1 ? 's' : ''} saved
-                </p>
-              </div>
-
-              <div className="divide-y divide-gray-700">
-                {calibrations.map((calibration) => (
-                  <div
-                    key={calibration.id}
-                    className={`px-6 py-5 hover:bg-gray-750 transition-colors ${
-                      calibration.is_active ? 'bg-gray-750' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold">
-                            {calibration.device_name || 'Unnamed Device'}
-                          </h3>
-                          {calibration.is_active && (
-                            <span className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1">
-                              <Check className="w-3 h-3" />
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-900/80">
+                  <tr className="text-gray-300">
+                    <th className="text-left px-4 py-3 font-semibold">Name</th>
+                    <th className="text-left px-4 py-3 font-semibold">Digits</th>
+                    <th className="text-left px-4 py-3 font-semibold">Decimal</th>
+                    <th className="text-left px-4 py-3 font-semibold">Created</th>
+                    <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-right px-4 py-3 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calibrations.map((cal) => {
+                    const isActive = cal.is_active;
+                    return (
+                      <tr
+                        key={cal.id}
+                        className={`border-t border-gray-800 ${
+                          isActive ? "bg-green-900/10" : "bg-gray-900/30"
+                        }`}
+                      >
+                        <td className="px-4 py-3 font-semibold text-gray-100">
+                          {cal.device_name || "Unnamed"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-200">{cal.num_digits}</td>
+                        <td className="px-4 py-3 text-gray-200">
+                          {cal.has_decimal_point ? (cal.decimal_position === 1 ? "XX.X" : "X.XX") : "None"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-400">{formatDate(cal.created_at)}</td>
+                        <td className="px-4 py-3 text-gray-200">
+                          {isActive ? (
+                            <span className="rounded-full bg-green-700 px-2 py-1 text-xs font-bold text-white">
                               Active
                             </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Inactive</span>
                           )}
-                        </div>
-                        
-                        <div className="flex items-center gap-4 text-sm text-gray-400">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {formatDate(calibration.created_at)}
-                          </span>
-                          <span>
-                            {calibration.num_digits} Digits
-                          </span>
-                          {calibration.has_decimal_point && (
-                            <span className="bg-gray-700 px-2 py-1 rounded-lg">
-                              {calibration.decimal_position === 1 ? 'XX.X' : 'X.XX'}
-                            </span>
-                          )}
-                          <span className="text-gray-500">
-                            ID: {calibration.id}
-                          </span>
-                        </div>
-
-                        {calibration.notes && (
-                          <p className="text-gray-400 text-sm mt-2">
-                            {calibration.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditCalibration(calibration)}
-                          className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
-                          title="Edit Calibration"
-                        >
-                          <Edit className="w-4 h-4" />
-                          <span className="text-sm font-medium">Edit</span>
-                        </button>
-
-                        <button
-                          onClick={() => viewCalibrationDetails(calibration)}
-                          className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
-                          title="View Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                          <span className="text-sm font-medium">Details</span>
-                        </button>
-
-                        {!calibration.is_active && (
-                          <button
-                            onClick={() => setAsActive(calibration.id)}
-                            className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors"
-                            title="Set as Active"
-                          >
-                            <Check className="w-4 h-4" />
-                            <span className="text-sm font-medium">Activate</span>
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => setShowDeleteConfirm(calibration.id)}
-                          className="bg-red-900 hover:bg-red-800 px-3 py-2 rounded-xl transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              onClick={() => viewCalibrationDetails(cal)}
+                              className="px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => handleEditCalibration(cal)}
+                              className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-xs"
+                            >
+                              Edit
+                            </button>
+                            {!isActive && (
+                              <button
+                                onClick={() => setAsActive(cal.id)}
+                                className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs"
+                              >
+                                Activate
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setShowDeleteConfirm(cal.id)}
+                              className="px-2 py-1 rounded-lg bg-red-700 hover:bg-red-800 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {calibrations.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-gray-500" colSpan={6}>
+                        No calibrations yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Confirm Deletion</h3>
-            <p className="text-gray-300 mb-6">
-              Are you sure you want to delete this calibration? This action cannot be undone.
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-md">
+            <h3 className="text-lg font-bold text-white mb-2">Delete calibration?</h3>
+            <p className="text-sm text-gray-300 mb-4">
+              This action cannot be undone.
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2.5 rounded-xl transition-colors font-medium"
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={() => deleteCalibration(showDeleteConfirm)}
-                className="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2.5 rounded-xl font-semibold transition-colors"
+                className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-sm font-semibold"
               >
                 Delete
               </button>
@@ -373,124 +273,78 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
         </div>
       )}
 
-      {/* Details Modal */}
       {selectedCalibration && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-gray-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h3 className="text-xl font-bold">Calibration Details</h3>
-              <button
-                onClick={closeDetailsModal}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-700">
+              <div className="text-lg font-semibold">Calibration Details</div>
+              <button onClick={closeDetailsModal} className="text-gray-300 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
-
-            <div className="p-6">
-              {/* Basic Info */}
-              <div className="bg-gray-750 rounded-xl p-5 mb-6">
-                <h4 className="font-semibold mb-4 text-lg">Basic Information</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-400">Device Name:</span>
-                    <p className="font-semibold mt-1">
-                      {selectedCalibration.device_name || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Number of Digits:</span>
-                    <p className="font-semibold mt-1">{selectedCalibration.num_digits}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Decimal Point:</span>
-                    <p className="font-semibold mt-1">
-                      {selectedCalibration.has_decimal_point ? (
-                        <span className="text-green-400">
-                          Yes ({selectedCalibration.decimal_position === 1 ? 'XX.X' : 'X.XX'})
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">No</span>
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Created:</span>
-                    <p className="font-semibold mt-1">
-                      {formatDate(selectedCalibration.created_at)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Status:</span>
-                    <p className="font-semibold mt-1">
-                      {selectedCalibration.is_active ? (
-                        <span className="text-green-400">Active</span>
-                      ) : (
-                        <span className="text-gray-400">Inactive</span>
-                      )}
-                    </p>
+            <div className="p-5 space-y-4 text-sm text-gray-200">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-gray-400 text-xs">Device Name</div>
+                  <div className="font-semibold">{selectedCalibration.device_name || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-xs">Digits</div>
+                  <div className="font-semibold">{selectedCalibration.num_digits}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-xs">Decimal</div>
+                  <div className="font-semibold">
+                    {selectedCalibration.has_decimal_point
+                      ? selectedCalibration.decimal_position === 1
+                        ? "XX.X"
+                        : "X.XX"
+                      : "None"}
                   </div>
                 </div>
-                {selectedCalibration.notes && (
-                  <div className="mt-4">
-                    <span className="text-gray-400 text-sm">Notes:</span>
-                    <p className="mt-1">{selectedCalibration.notes}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Display Box */}
-              <div className="bg-gray-750 rounded-xl p-5 mb-6">
-                <h4 className="font-semibold mb-4 text-lg">Display Bounding Box</h4>
-                <div className="grid grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-400">X:</span>
-                    <p className="font-mono mt-1">
-                      {selectedCalibration.display_box.x.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Y:</span>
-                    <p className="font-mono mt-1">
-                      {selectedCalibration.display_box.y.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Width:</span>
-                    <p className="font-mono mt-1">
-                      {selectedCalibration.display_box.width.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Height:</span>
-                    <p className="font-mono mt-1">
-                      {selectedCalibration.display_box.height.toFixed(2)}
-                    </p>
+                <div>
+                  <div className="text-gray-400 text-xs">Created</div>
+                  <div className="font-semibold">{formatDate(selectedCalibration.created_at)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400 text-xs">Status</div>
+                  <div className="font-semibold">
+                    {selectedCalibration.is_active ? "Active" : "Inactive"}
                   </div>
                 </div>
               </div>
 
-              {/* Segment Boxes */}
-              <div className="bg-gray-750 rounded-xl p-5">
-                <h4 className="font-semibold mb-4 text-lg">Segment Boxes</h4>
-                <div className="space-y-4">
-                  {selectedCalibration.segment_boxes.map((digit, digitIdx) => (
-                    <div key={digitIdx} className="border border-gray-600 rounded-xl p-4">
-                      <h5 className="font-semibold mb-3 text-blue-400">
-                        Digit {digitIdx + 1}
-                      </h5>
-                      <div className="grid grid-cols-7 gap-2 text-xs">
-                        {['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((seg, segIdx) => (
-                          <div key={segIdx} className="bg-gray-800 rounded-lg p-2">
-                            <div className="font-semibold text-gray-400 mb-1">{seg}</div>
-                            {digit[segIdx] && (
-                              <div className="space-y-1 text-gray-500 font-mono">
-                                <div>x: {digit[segIdx].x.toFixed(0)}</div>
-                                <div>y: {digit[segIdx].y.toFixed(0)}</div>
-                                <div>w: {digit[segIdx].width.toFixed(0)}</div>
-                                <div>h: {digit[segIdx].height.toFixed(0)}</div>
-                              </div>
-                            )}
+              {selectedCalibration.notes && (
+                <div>
+                  <div className="text-gray-400 text-xs">Notes</div>
+                  <div>{selectedCalibration.notes}</div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-gray-400 text-xs mb-2">Display Box</div>
+                <div className="grid grid-cols-4 gap-3 font-mono text-xs bg-gray-900/60 p-3 rounded-lg border border-gray-800">
+                  <div>X: {selectedCalibration.display_box.x.toFixed(2)}</div>
+                  <div>Y: {selectedCalibration.display_box.y.toFixed(2)}</div>
+                  <div>W: {selectedCalibration.display_box.width.toFixed(2)}</div>
+                  <div>H: {selectedCalibration.display_box.height.toFixed(2)}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-gray-400 text-xs mb-2">Segment Boxes</div>
+                <div className="space-y-3">
+                  {selectedCalibration.segment_boxes.map((digit, idx) => (
+                    <div key={idx} className="border border-gray-800 rounded-lg p-3">
+                      <div className="text-xs font-semibold text-blue-300 mb-2">Digit {idx + 1}</div>
+                      <div className="grid grid-cols-7 gap-2 text-[11px] font-mono text-gray-300">
+                        {digit.map((seg, segIdx) => (
+                          <div key={segIdx} className="bg-gray-900/60 border border-gray-800 rounded p-2">
+                            <div className="text-gray-500 mb-1">{"ABCDEFG"[segIdx]}</div>
+                            <div>x: {seg.x.toFixed(0)}</div>
+                            <div>y: {seg.y.toFixed(0)}</div>
+                            <div>w: {seg.width.toFixed(0)}</div>
+                            <div>h: {seg.height.toFixed(0)}</div>
                           </div>
                         ))}
                       </div>
@@ -499,17 +353,12 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="mt-6 flex gap-3">
+              <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => {
-                    handleEditCalibration(selectedCalibration);
-                    closeDetailsModal();
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                  onClick={() => handleEditCalibration(selectedCalibration)}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-semibold"
                 >
-                  <Edit className="w-5 h-5" />
-                  Edit Calibration
+                  Edit
                 </button>
                 {!selectedCalibration.is_active && (
                   <button
@@ -517,15 +366,14 @@ const MoistureSettings = ({ onBack, onEditCalibration }) => {
                       setAsActive(selectedCalibration.id);
                       closeDetailsModal();
                     }}
-                    className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold"
                   >
-                    <Check className="w-5 h-5" />
-                    Set as Active
+                    Activate
                   </button>
                 )}
                 <button
                   onClick={closeDetailsModal}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-3 rounded-xl font-semibold transition-colors"
+                  className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm font-semibold"
                 >
                   Close
                 </button>

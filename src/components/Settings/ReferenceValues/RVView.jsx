@@ -1,222 +1,84 @@
 import React from "react";
 
-const RVView = ({ data, darkMode = true, onClose }) => {
-  const getGroupLabel = (group) => {
-    const labels = {
-      high: "High Strength Group",
-      moderately_high: "Moderately High Strength Group",
-      medium: "Medium Strength Group",
-    };
-    return labels[group] || group;
-  };
+const badgeColor = (group) => {
+  switch (group) {
+    case "high":
+      return "bg-purple-600 text-white";
+    case "moderately_high":
+      return "bg-blue-600 text-white";
+    case "medium":
+      return "bg-green-600 text-white";
+    default:
+      return "bg-gray-600 text-white";
+  }
+};
 
-  const getGroupColor = (group) => {
-    const colors = {
-      high: "bg-purple-600 text-white",
-      moderately_high: "bg-blue-600 text-white",
-      medium: "bg-green-600 text-white",
-    };
-    return colors[group] || "bg-gray-600 text-white";
-  };
+const badgeLabel = (group) => {
+  switch (group) {
+    case "high":
+      return "High";
+    case "moderately_high":
+      return "Moderately High";
+    case "medium":
+      return "Medium";
+    default:
+      return group || "Unknown";
+  }
+};
+
+const RVView = ({ data, darkMode = true, onClose }) => {
+  const shell = darkMode ? "bg-gray-900 text-gray-100" : "bg-white text-gray-900";
+  const bar = darkMode ? "border-gray-800 bg-gray-900/80" : "border-gray-200 bg-white/80";
+  const card = darkMode ? "border-gray-800 bg-gray-900/60" : "border-gray-200 bg-white";
 
   return (
-    <div className={`w-full h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
-      {/* Header */}
-      <div
-        className={`flex items-center justify-between px-6 py-3 border-b-2 ${
-          darkMode ? "border-gray-700 bg-gray-800" : "border-black bg-gray-100"
-        }`}
-      >
-        <div className="flex items-center gap-4">
-          <h2
-            className={`text-2xl font-bold ${darkMode ? "text-gray-100" : "text-gray-900"}`}
+    <div className={`h-full flex flex-col ${shell}`}>
+      <div className={`border-b ${bar} sticky top-0 z-10 backdrop-blur`}>
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-base font-extrabold tracking-tight">Reference Value</div>
+            <div className="text-sm mt-0.5 truncate">
+              {data?.common_name || "Unknown"}{" "}
+              {data?.botanical_name ? <span className="text-gray-400 italic">({data.botanical_name})</span> : null}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className={`px-3 py-2 text-sm rounded-xl border ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-300 bg-white"}`}
           >
-            View Reference Value | {data?.common_name || "Unknown Species"}
-          </h2>
-          {/* Group Badge */}
-          <span
-            className={`px-3 py-1 text-xs font-bold ${getGroupColor(data?.strength_group)}`}
-          >
-            {getGroupLabel(data?.strength_group)}
-          </span>
-          {/* Botanical Name */}
-          {data?.botanical_name && (
-            <span
-              className={`text-sm italic ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-            >
-              ({data?.botanical_name})
-            </span>
-          )}
+            Close
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className={`text-3xl font-bold ${darkMode ? "text-gray-200 hover:text-gray-400" : "text-gray-900 hover:text-gray-600"}`}
-        >
-          ✕
-        </button>
       </div>
 
-      {/* Main content - Full width */}
-      <div className="h-[calc(100%-60px)] overflow-y-auto">
-        {/* Properties Grid */}
-        <div className="p-6">
-          <h4
-            className={`text-xl font-bold mb-4 ${darkMode ? "text-purple-400" : "text-purple-600"}`}
-          >
-            Mechanical Properties
-          </h4>
+      <div className="max-w-5xl mx-auto w-full flex-1 px-4 py-4 space-y-4">
+        <div className={`rounded-2xl border ${card} p-4 flex items-center gap-3`}>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${badgeColor(data?.strength_group)}`}>
+            {badgeLabel(data?.strength_group)}
+          </span>
+          <div className="text-sm text-gray-300">ID: {data?.id ?? "-"}</div>
+        </div>
 
-          {/* 2x2 Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Compression Parallel */}
-            <div
-              className={`p-4 border-2 ${
-                darkMode
-                  ? "border-gray-700 bg-gray-800"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              <div
-                className={`text-xs font-bold mb-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-              >
-                Compression Parallel to Grain (Fc):
+        <div className={`rounded-2xl border ${card} p-4`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            {[
+              ["Compression Parallel (Fc)", data?.compression_parallel],
+              ["Compression ⟂ (Fc⊥)", data?.compression_perpendicular],
+              ["Shear Parallel (Fv)", data?.shear_parallel],
+              ["Bending & Tension (FbFt)", data?.bending_tension_parallel],
+            ].map(([label, val]) => (
+              <div key={label} className="space-y-1">
+                <div className="text-xs text-gray-400">{label}</div>
+                <div className="text-xl font-bold">
+                  {val ?? "-"} <span className="text-sm font-semibold text-gray-400">MPa</span>
+                </div>
               </div>
-              <div
-                className={`text-3xl font-bold ${darkMode ? "text-purple-400" : "text-purple-600"}`}
-              >
-                {data?.compression_parallel}{" "}
-                <span className="text-lg">MPa</span>
-              </div>
-              <div
-                className={`text-xs mt-2 ${darkMode ? "text-gray-500" : "text-gray-500"}`}
-              >
-                Maximum compressive stress parallel to wood grain
-              </div>
-            </div>
-
-            {/* Compression Perpendicular */}
-            <div
-              className={`p-4 border-2 ${
-                darkMode
-                  ? "border-gray-700 bg-gray-800"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              <div
-                className={`text-xs font-bold mb-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-              >
-                Compression Perpendicular to Grain (Fc⊥):
-              </div>
-              <div
-                className={`text-3xl font-bold ${darkMode ? "text-purple-400" : "text-purple-600"}`}
-              >
-                {data?.compression_perpendicular}{" "}
-                <span className="text-lg">MPa</span>
-              </div>
-              <div
-                className={`text-xs mt-2 ${darkMode ? "text-gray-500" : "text-gray-500"}`}
-              >
-                Maximum compressive stress perpendicular to wood grain
-              </div>
-            </div>
-
-            {/* Shear Parallel */}
-            <div
-              className={`p-4 border-2 ${
-                darkMode
-                  ? "border-gray-700 bg-gray-800"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              <div
-                className={`text-xs font-bold mb-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-              >
-                Shear Parallel to Grain (Fv):
-              </div>
-              <div
-                className={`text-3xl font-bold ${darkMode ? "text-purple-400" : "text-purple-600"}`}
-              >
-                {data?.shear_parallel} <span className="text-lg">MPa</span>
-              </div>
-              <div
-                className={`text-xs mt-2 ${darkMode ? "text-gray-500" : "text-gray-500"}`}
-              >
-                Maximum shear stress parallel to wood grain
-              </div>
-            </div>
-
-            {/* Bending & Tension */}
-            <div
-              className={`p-4 border-2 ${
-                darkMode
-                  ? "border-gray-700 bg-gray-800"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              <div
-                className={`text-xs font-bold mb-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-              >
-                Bending & Tension Parallel to Grain (FbFt):
-              </div>
-              <div
-                className={`text-3xl font-bold ${darkMode ? "text-purple-400" : "text-purple-600"}`}
-              >
-                {data?.bending_tension_parallel}{" "}
-                <span className="text-lg">MPa</span>
-              </div>
-              <div
-                className={`text-xs mt-2 ${darkMode ? "text-gray-500" : "text-gray-500"}`}
-              >
-                Maximum bending and tension stress parallel to wood grain
-              </div>
-            </div>
+            ))}
           </div>
+        </div>
 
-          {/* Info Note */}
-          <div
-            className={`mt-6 p-4 border-2 ${
-              darkMode
-                ? "bg-blue-900 bg-opacity-20 border-blue-800"
-                : "bg-blue-50 border-blue-300"
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  darkMode ? "bg-blue-600" : "bg-blue-500"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h5
-                  className={`text-sm font-bold mb-1 ${darkMode ? "text-blue-300" : "text-blue-700"}`}
-                >
-                  Reference Values
-                </h5>
-                <p
-                  className={`text-xs ${darkMode ? "text-blue-200" : "text-blue-600"}`}
-                >
-                  These values represent standardized mechanical properties for
-                  Philippine wood species. They are used for comparison with
-                  experimental test results to assess wood quality and
-                  performance.
-                </p>
-              </div>
-            </div>
-          </div>
+        <div className={`rounded-2xl border ${card} p-4 text-xs text-gray-300`}>
+          These standardized mechanical properties are used to compare against measured specimens.
         </div>
       </div>
     </div>

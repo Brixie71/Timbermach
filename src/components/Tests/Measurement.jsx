@@ -1,41 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FLASK_BASE_URL } from "../../config/servers";
+import { FLASK_BASE_URL, LARAVEL_BASE_URL } from "../../config/servers";
+import {
+  MEASUREMENT_DEFAULT_PARAMS,
+  MEASUREMENT_PRESETS_DEFAULT,
+  loadMeasurementSettingsPreferApi,
+  loadMeasurementSettings,
+  sanitizeMeasurementParams,
+} from "../../config/measurementSettings";
 
 const PY_API = FLASK_BASE_URL;
-
-const DEFAULT_PARAMS = {
-  threshold1: 52,
-  threshold2: 104,
-  mask_thresh: 0, // 0=Otsu, >0 manual
-  open_k: 3, // odd
-  close_k: 5, // odd
-
-  min_area: 1000,
-  blur_kernel: 21,
-  dilation: 1,
-  erosion: 1,
-  roi_size: 60,
-  roi_shape: "square", // square (parallel) | rectangle (perpendicular)
-  brightness: 0,
-  contrast: 101,
-  mm_per_pixel: 0.1288,
-  edge_thickness: 2,
-  denoise_enabled: true,
-  denoise_h: 6, // 3-10 good range
-  denoise_template: 7, // odd
-  denoise_search: 21, // odd
-};
 
 const CAMERA_LABELS = {
   flexure: "UVC Camera (12d1:4321)", // front camera
   compressive: "A4ech FHD 1080P PC Camera (09da:2704)", // back camera
   shear: "A4ech FHD 1080P PC Camera (09da:2704)", // back camera
-};
-
-const PARAM_PRESETS = {
-  flexure: { mm_per_pixel: 0.1568, roi_size: 70 },
-  compressive: { mm_per_pixel: 0.1288, roi_size: 65 },
-  shear: { mm_per_pixel: 0.1288, roi_size: 65 },
 };
 
 const FLEXURE_LENGTH_MM = 584.2; // 23 inches fixed span
@@ -313,7 +291,10 @@ export default function Measurement({
   const [stream, setStream] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
 
-  const [params, setParams] = useState(DEFAULT_PARAMS);
+  const [params, setParams] = useState({ ...MEASUREMENT_DEFAULT_PARAMS });
+  const [paramPresets, setParamPresets] = useState({
+    ...MEASUREMENT_PRESETS_DEFAULT,
+  });
 
   const [overlayBase64, setOverlayBase64] = useState(null);
   const [result, setResult] = useState(null);
@@ -331,6 +312,36 @@ export default function Measurement({
   const tLower = String(testType || "").toLowerCase();
   const sLower = String(subType || "").toLowerCase();
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const loaded = await loadMeasurementSettingsPreferApi(LARAVEL_BASE_URL);
+        if (cancelled) return;
+        setParams(
+          sanitizeMeasurementParams({
+            ...MEASUREMENT_DEFAULT_PARAMS,
+            ...(loaded.params || {}),
+          })
+        );
+        setParamPresets((prev) => ({ ...prev, ...(loaded.presets || {}) }));
+      } catch {
+        const stored = loadMeasurementSettings();
+        if (cancelled) return;
+        setParams(
+          sanitizeMeasurementParams({
+            ...MEASUREMENT_DEFAULT_PARAMS,
+            ...(stored.params || {}),
+          })
+        );
+        setParamPresets((prev) => ({ ...prev, ...(stored.presets || {}) }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Request 1920x1080 but scale full-screen using CSS
   const VIDEO_CONSTRAINTS = {
     audio: false,
@@ -342,8 +353,17 @@ export default function Measurement({
 
   // Load parameter preset when testType changes
   useEffect(() => {
-    const preset = PARAM_PRESETS[tLower] || {};
-    setParams((p) => ({ ...p, ...preset }));
+    const preset = paramPresets[tLower] || {};
+    setParams((p) =>
+      sanitizeMeasurementParams({
+        ...p,
+        ...preset,
+        roi_shape:
+          tLower === "compressive" && sLower === "perpendicular"
+            ? "rectangle"
+            : "square",
+      })
+    );
 
     // open length setup each time test changes (except flexure fixed)
     if (tLower === "flexure") {
@@ -362,16 +382,7 @@ export default function Measurement({
     setResult(null);
     setMeasurement(null);
     setErr(null);
-
-    // Default ROI shape per mode
-    setParams((p) => ({
-      ...p,
-      roi_shape:
-        tLower === "compressive" && sLower === "perpendicular"
-          ? "rectangle"
-          : "square",
-    }));
-  }, [tLower, sLower]);
+  }, [tLower, sLower, paramPresets]);
 
   // Selected length in mm (fixed for flexure)
   const selectedLengthMM = useMemo(() => {

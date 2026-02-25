@@ -15,6 +15,7 @@ const SevenSegmentCalibration = React.lazy(() => import("./components/Settings/S
 const ReferenceValues = React.lazy(() => import("./components/Settings/ReferenceValues/ReferenceValues"));
 const ActuatorControl = React.lazy(() => import("./components/Settings/ActuatorControl"));
 const ActuatorCalibration = React.lazy(() => import("./components/Settings/ActuatorCalibration"));
+const MeasurementSettings = React.lazy(() => import("./components/Settings/MeasurementSettings"));
 const Dash = React.lazy(() => import("./components/Dash/Dash"));
 const Settings = React.lazy(() => import("./components/Settings/Settings"));
 import "./App.css";
@@ -183,6 +184,11 @@ function App() {
     setActiveItem("actuator-calibration");
   };
 
+  const handleNavigateToMeasurementSettings = () => {
+    console.log("App: Navigating to measurement-settings");
+    setActiveItem("measurement-settings");
+  };
+
   const renderContent = () => {
     console.log("App: Rendering content for activeItem:", activeItem);
 
@@ -197,6 +203,7 @@ function App() {
             onNavigateToMoistureSettings={handleNavigateToMoistureSettings}
             onNavigateToMoistureTest={handleNavigateToMoistureTest}
             onNavigateToReferenceValues={handleNavigateToReferenceValues}
+            onNavigateToMeasurementSettings={handleNavigateToMeasurementSettings}
             onNavigateToActuatorControl={handleNavigateToActuatorControl}
             onNavigateToActuatorCalibration={
               handleNavigateToActuatorCalibration
@@ -262,6 +269,9 @@ function App() {
         console.log("App: Rendering ActuatorCalibration");
         return <ActuatorCalibration onBack={() => setActiveItem("settings")} />;
 
+      case "measurement-settings":
+        return <MeasurementSettings onBack={() => setActiveItem("settings")} />;
+
       default:
         return <Dash darkMode={darkMode} />;
     }
@@ -285,6 +295,8 @@ function App() {
         return "Actuator Control";
       case "actuator-calibration":
         return "Actuator Calibration";
+      case "measurement-settings":
+        return "Measurement Settings";
       default:
         return "Dashboard";
     }
@@ -436,8 +448,8 @@ function App() {
         </aside>
 
 
-        {/* Main Content - No Padding */}
-        <div className="absolute top-[60px] left-0 right-0 bottom-0 overflow-auto">
+        {/* Main Content - sits just below the 64px header */}
+        <div className="absolute top-[64px] left-0 right-0 bottom-0 overflow-auto">
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-sm text-gray-500">

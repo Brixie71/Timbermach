@@ -10,32 +10,32 @@ const PRESSURE_BAR_HINT = `Range: 0-${PRESSURE_BAR_MAX} bar (API limit)`;
 
 const baseShell = "h-full flex flex-col transition-colors";
 const lightShell = "bg-zinc-50 text-zinc-900";
-const darkShell = "bg-zinc-950 text-zinc-100";
+const darkShell = "bg-slate-900 text-slate-100";
 
 const topBar = "sticky top-0 z-10 border-b backdrop-blur supports-[backdrop-filter]:bg-opacity-70";
 const topBarLight = "border-zinc-200 bg-zinc-50/80";
-const topBarDark = "border-zinc-800 bg-zinc-950/70";
+const topBarDark = "border-slate-700 bg-slate-900/80";
 
 const card = "rounded-2xl border shadow-sm";
 const cardLight = "border-zinc-200 bg-white";
-const cardDark = "border-zinc-800 bg-zinc-900/40";
+const cardDark = "border-slate-700 bg-slate-800/60";
 
 const labelCls = "text-xs font-semibold text-zinc-700";
-const labelClsDark = "text-zinc-200";
+const labelClsDark = "text-slate-100";
 
 const inputBase = "w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-2";
 const inputLight =
   "border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400 focus:border-transparent focus:ring-blue-500";
 const inputDark =
-  "border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500 focus:border-transparent focus:ring-blue-400";
+  "border-slate-700 bg-slate-900 text-slate-100 placeholder:text-slate-400 focus:border-transparent focus:ring-blue-400";
 
 const errorText = "text-[11px] text-red-600";
 
 const btn =
   "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
 const btnGhostLight = "border border-zinc-300 bg-white hover:bg-zinc-50";
-const btnGhostDark = "border border-zinc-700 bg-zinc-900 hover:bg-zinc-800";
-const btnPrimary = "bg-blue-600 text-white hover:bg-blue-700";
+const btnGhostDark = "border border-slate-700 bg-slate-900 hover:bg-slate-800";
+const btnPrimary = "text-white bg-blue-700 hover:bg-blue-800";
 
 function safeNum(v, fallback = NaN) {
   const n = Number.parseFloat(String(v ?? ""));
@@ -66,7 +66,7 @@ const SaveConfirmationModal = ({ isOpen, onClose, onConfirm, darkMode }) => {
     <ModalShell isOpen={isOpen} onClose={onClose}>
       <div
         className={`${
-          darkMode ? "border border-zinc-800 bg-zinc-950 text-zinc-100" : "border border-zinc-200 bg-white text-zinc-900"
+          darkMode ? "border border-slate-700 bg-slate-900 text-slate-100" : "border border-zinc-200 bg-white text-zinc-900"
         } rounded-2xl`}
       >
         <div className="p-2">
@@ -92,7 +92,7 @@ const SuccessModal = ({ isOpen, onClose, darkMode }) => {
     <ModalShell isOpen={isOpen} onClose={onClose}>
       <div
         className={`${
-          darkMode ? "border border-zinc-800 bg-zinc-950 text-zinc-100" : "border border-zinc-200 bg-white text-zinc-900"
+          darkMode ? "border border-slate-700 bg-slate-900 text-slate-100" : "border border-zinc-200 bg-white text-zinc-900"
         } rounded-2xl`}
       >
         <div className="p-2">
