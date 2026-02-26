@@ -46,15 +46,12 @@ function ModalShell({ isOpen, onClose, children }) {
   if (!isOpen) return null;
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
         {children}
       </div>
     </div>
@@ -65,15 +62,18 @@ const SaveConfirmationModal = ({ isOpen, onClose, onConfirm, darkMode }) => {
   return (
     <ModalShell isOpen={isOpen} onClose={onClose}>
       <div
-        className={`${
-          darkMode ? "border border-slate-700 bg-slate-900 text-slate-100" : "border border-zinc-200 bg-white text-zinc-900"
-        } rounded-2xl`}
+        className={`rounded-2xl shadow-2xl border ${
+          darkMode
+            ? "border-slate-700 bg-slate-900 text-slate-100"
+            : "border-zinc-200 bg-white text-zinc-900"
+        }`}
       >
-        <div className="p-2">
-          <h3 className="text-base font-bold">Confirm Save</h3>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Save changes to this specimen?</p>
-
-          <div className="mt-4 flex justify-end gap-2">
+        <div className="p-5 space-y-3">
+          <h3 className="text-lg font-bold tracking-tight">Confirm Save</h3>
+          <p className={`text-sm ${darkMode ? "text-slate-200" : "text-zinc-700"}`}>
+            Save changes to this specimen?
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className={`${btn} ${darkMode ? btnGhostDark : btnGhostLight}`}>
               Cancel
             </button>
@@ -350,7 +350,7 @@ const SpecimenEdit = ({ data, dataType, darkMode = false, onClose, onSave }) => 
   const labelFinal = `${labelCls} ${darkMode ? labelClsDark : ""}`;
 
   return (
-    <div className={shellCls}>
+    <div className={shellCls} style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}>
       {/* Header */}
       <div className={barCls}>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">

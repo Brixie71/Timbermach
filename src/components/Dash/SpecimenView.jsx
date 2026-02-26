@@ -578,7 +578,10 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   }
 
   return (
-    <div className={`w-full h-full flex flex-col ${shell}`} style={{ fontFamily: "JustSans, system-ui, sans-serif" }}>
+    <div
+      className={`w-full h-full flex flex-col ${shell}`}
+      style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}
+    >
       <div className={["sticky top-0 z-20 border-b", border, glassHeader, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
         <div className="flex items-center justify-between px-4 h-[56px]">
           <div className="min-w-0">

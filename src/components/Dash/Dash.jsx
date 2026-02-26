@@ -504,7 +504,7 @@ const Dash = ({ darkMode = false }) => {
         className={`flex items-center justify-center h-full ${
           darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-50 text-gray-900"
         }`}
-        style={{ fontFamily: "JustSans, system-ui, sans-serif" }}
+        style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}
       >
         <div className="text-sm font-semibold">Loading...</div>
       </div>
@@ -517,7 +517,7 @@ const Dash = ({ darkMode = false }) => {
         className={`flex items-center justify-center h-full ${
           darkMode ? "bg-gray-900 text-red-400" : "bg-gray-50 text-red-600"
         }`}
-        style={{ fontFamily: "JustSans, system-ui, sans-serif" }}
+        style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}
       >
         <div className="text-sm font-semibold">{error}</div>
       </div>
@@ -562,7 +562,7 @@ const Dash = ({ darkMode = false }) => {
         className={`h-full overflow-hidden flex flex-col ${
           darkMode ? "bg-gray-900" : "bg-gray-50"
         }`}
-        style={{ fontFamily: "JustSans, system-ui, sans-serif" }}
+        style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}
       >
         {/* Tabs */}
         <div className={`${darkMode ? "border-gray-800" : "border-gray-200"} border-b`}>
@@ -593,7 +593,7 @@ const Dash = ({ darkMode = false }) => {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden" style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}>
           <CompactDataTable
             data={activeRows}
             onView={(item) => handleView(item, activeTab)}

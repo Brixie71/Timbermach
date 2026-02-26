@@ -309,7 +309,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
   return (
     <div
       className={`w-full h-full flex flex-col ${shell}`}
-      style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}
+      style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}
     >
       <div className={["sticky top-0 z-20 border-b", border, glassHeader, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
         <div className="h-[56px] px-4 flex items-center justify-between">
