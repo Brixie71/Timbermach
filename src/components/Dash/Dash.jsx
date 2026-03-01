@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import SpecimenView from "./SpecimenView";
 import DataEdit from "./SpecimenEdit";
 import { laravelUrl } from "../../config/servers";
+import { useVirtualizer } from "@itsmeadarsh/warper";
 
 // Keep in sync with Header height in App/Header.jsx
 const HEADER_H = 64;
@@ -244,10 +245,19 @@ const CompactDataTable = ({
   onEdit,
   onDelete,
   darkMode = false,
+  sortConfig,
+  onToggleSort,
 }) => {
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedItemId, setSelectedItemId] = useState(null);
+  const estimateSize = useCallback(() => 68, []);
+  const { scrollElementRef, range, totalHeight, isLoading: isVirtualizerLoading, error: virtualizerError } =
+    useVirtualizer({
+      itemCount: data?.length ?? 0,
+      estimateSize, // typical row height; adjust if design changes
+      overscan: 8,
+    });
 
   const handleOpenActionModal = (item, itemId) => {
     setSelectedItem(item);
@@ -278,7 +288,7 @@ const CompactDataTable = ({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" ref={scrollElementRef}>
         <table
           className={[
             "w-full border-collapse",
@@ -287,14 +297,41 @@ const CompactDataTable = ({
         >
           <thead className={`sticky top-0 z-10 ${headBg} backdrop-blur`}>
             <tr>
-              {["Specimen", "Test Type", "Test Date", "Modified"].map((h) => (
-                <th
-                  key={h}
-                  className={`border ${borderCls} ${thBase}`}
-                >
-                  {h}
-                </th>
-              ))}
+              {[
+                { id: "specimen", label: "Specimen" },
+                { id: "test_type", label: "Test Type" },
+                { id: "created_at", label: "Test Date" },
+                { id: "updated_at", label: "Modified" },
+              ].map((h) => {
+                const isActive = sortConfig?.column === h.id;
+                const direction = sortConfig?.direction;
+                const chevron = !isActive
+                  ? "↕"
+                  : direction === "asc"
+                    ? "▲"
+                    : "▼";
+
+                return (
+                  <th
+                    key={h.id}
+                    className={`border ${borderCls} ${thBase}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onToggleSort?.(h.id)}
+                      className={[
+                        "w-full inline-flex items-center justify-center gap-1",
+                        "transition-colors rounded-md px-1 py-1",
+                        darkMode ? "hover:bg-white/10" : "hover:bg-black/5",
+                      ].join(" ")}
+                      title="Toggle sort (asc/desc/off)"
+                    >
+                      <span>{h.label}</span>
+                      <span className="text-[11px] opacity-80">{chevron}</span>
+                    </button>
+                  </th>
+                );
+              })}
 
               <th
                 className={`border ${borderCls} ${thBase} sticky right-0 ${headBg} backdrop-blur`}
@@ -306,69 +343,120 @@ const CompactDataTable = ({
           </thead>
 
           <tbody>
-            {data && data.length > 0 ? (
-              data.map((row, idx) => {
-                const itemId =
-                  row.compressive_id || row.shear_id || row.flexure_id || row.ID;
-
-                return (
-                  <tr key={idx} className={`transition-colors ${hoverBg}`}>
-                    <td
-                      className={`border ${borderCls} ${tdBase} font-semibold`}
-                      style={{ minWidth: "160px" }}
-                    >
-                      {row.specimen_name ?? row["Specimen Name"] ?? "-"}
-                    </td>
-
-                    <td
-                      className={`border ${borderCls} ${tdBase} font-semibold`}
-                      style={{ minWidth: "140px" }}
-                    >
-                      {row.test_type ?? row["Test Type"] ?? "-"}
-                    </td>
-
-                    <td
-                      className={`border ${borderCls} ${tdBase}`}
-                      style={{ minWidth: "150px" }}
-                    >
-                      {formatDbDateTime(row.created_at)}
-                    </td>
-
-                    <td
-                      className={`border ${borderCls} ${tdBase}`}
-                      style={{ minWidth: "150px" }}
-                    >
-                      {formatDbDateTime(row.updated_at)}
-                    </td>
-
-                    <td
-                      className={[
-                        `border ${borderCls} text-center sticky right-0`,
-                        cellBg,
-                      ].join(" ")}
-                    >
-                      <button
-                        onClick={() => handleOpenActionModal(row, itemId)}
-                        className={[
-                          "w-full h-full px-2 py-3 transition-colors",
-                          darkMode ? "hover:bg-white/10" : "hover:bg-black/10",
-                        ].join(" ")}
-                        title="Actions"
-                      >
-                        <svg
-                          className={`w-6 h-6 mx-auto ${
-                            darkMode ? "text-gray-200" : "text-gray-900"
-                          }`}
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
-                        </svg>
-                      </button>
-                    </td>
+            {virtualizerError ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className={`border ${borderCls} px-4 py-6 text-center text-sm ${
+                    darkMode ? "text-red-300" : "text-red-700"
+                  }`}
+                >
+                  Failed to initialize list: {virtualizerError.message}
+                </td>
+              </tr>
+            ) : isVirtualizerLoading ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className={`border ${borderCls} px-4 py-6 text-center text-sm ${
+                    darkMode ? "text-gray-300" : "text-gray-700"
+                  }`}
+                >
+                  Loading list...
+                </td>
+              </tr>
+            ) : data && data.length > 0 ? (
+              <>
+                {range.items.length > 0 && range.offsets[0] > 0 ? (
+                  <tr style={{ height: range.offsets[0] }} aria-hidden="true">
+                    <td colSpan={5} style={{ padding: 0, border: "none" }} />
                   </tr>
-                );
-              })
+                ) : null}
+
+                {range.items.map((index, i) => {
+                  const row = data[index];
+                  const itemId =
+                    row.compressive_id || row.shear_id || row.flexure_id || row.ID || index;
+
+                  return (
+                    <tr
+                      key={itemId}
+                      className={`transition-colors ${hoverBg}`}
+                      style={{ height: range.sizes[i] }}
+                    >
+                      <td
+                        className={`border ${borderCls} ${tdBase} font-semibold`}
+                        style={{ minWidth: "160px" }}
+                      >
+                        {row?.specimen_name ?? row?.["Specimen Name"] ?? "-"}
+                      </td>
+
+                      <td
+                        className={`border ${borderCls} ${tdBase} font-semibold`}
+                        style={{ minWidth: "140px" }}
+                      >
+                        {row?.test_type ?? row?.["Test Type"] ?? "-"}
+                      </td>
+
+                      <td
+                        className={`border ${borderCls} ${tdBase}`}
+                        style={{ minWidth: "150px" }}
+                      >
+                        {formatDbDateTime(row?.created_at)}
+                      </td>
+
+                      <td
+                        className={`border ${borderCls} ${tdBase}`}
+                        style={{ minWidth: "150px" }}
+                      >
+                        {formatDbDateTime(row?.updated_at)}
+                      </td>
+
+                      <td
+                        className={[
+                          `border ${borderCls} text-center sticky right-0`,
+                          cellBg,
+                        ].join(" ")}
+                      >
+                        <button
+                          onClick={() => handleOpenActionModal(row, itemId)}
+                          className={[
+                            "w-full h-full px-2 py-3 transition-colors",
+                            darkMode ? "hover:bg-white/10" : "hover:bg-black/10",
+                          ].join(" ")}
+                          title="Actions"
+                        >
+                          <svg
+                            className={`w-6 h-6 mx-auto ${
+                              darkMode ? "text-gray-200" : "text-gray-900"
+                            }`}
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {range.items.length > 0 ? (
+                  <tr
+                    style={{
+                      height: Math.max(
+                        0,
+                        totalHeight -
+                          (range.offsets[range.offsets.length - 1] +
+                            range.sizes[range.sizes.length - 1])
+                      ),
+                    }}
+                    aria-hidden="true"
+                  >
+                    <td colSpan={5} style={{ padding: 0, border: "none" }} />
+                  </tr>
+                ) : null}
+              </>
             ) : (
               <tr>
                 <td
@@ -408,6 +496,7 @@ const Dash = ({ darkMode = false }) => {
   const [error, setError] = useState(null);
 
   const [activeTab, setActiveTab] = useState("compressive");
+  const [sortConfig, setSortConfig] = useState({ column: null, direction: "asc" }); // column: specimen|test_type|created_at|updated_at
 
   // View state
   const [showSpecimenView, setShowSpecimenView] = useState(false);
@@ -497,6 +586,58 @@ const Dash = ({ darkMode = false }) => {
     if (activeTab === "shear") return shearData;
     return flexureData;
   }, [activeTab, compressiveData, shearData, flexureData]);
+
+  // Sorting helpers ---------------------------------------------------------
+  const getComparableSpecimen = (row) =>
+    String(row?.specimen_name ?? row?.["Specimen Name"] ?? "").toLowerCase();
+  const getComparableTestType = (row) =>
+    String(row?.test_type ?? row?.["Test Type"] ?? "").toLowerCase();
+  const parseDate = (value) => {
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d.getTime() : 0;
+  };
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig.column) return activeRows;
+
+    const dir = sortConfig.direction === "desc" ? -1 : 1;
+    const rowsWithIndex = activeRows.map((row, idx) => ({ row, idx }));
+
+    rowsWithIndex.sort((a, b) => {
+      let res = 0;
+      switch (sortConfig.column) {
+        case "specimen":
+          res = getComparableSpecimen(a.row).localeCompare(getComparableSpecimen(b.row));
+          break;
+        case "test_type":
+          res = getComparableTestType(a.row).localeCompare(getComparableTestType(b.row));
+          break;
+        case "created_at":
+          res = parseDate(a.row?.created_at) - parseDate(b.row?.created_at);
+          break;
+        case "updated_at":
+          res = parseDate(a.row?.updated_at) - parseDate(b.row?.updated_at);
+          break;
+        default:
+          res = 0;
+      }
+      // Stable sort fallback on original index
+      if (res === 0) res = a.idx - b.idx;
+      return res * dir;
+    });
+
+    return rowsWithIndex.map((item) => item.row);
+  }, [activeRows, sortConfig]);
+
+  const toggleSort = (column) => {
+    setSortConfig((prev) => {
+      if (prev.column === column) {
+        if (prev.direction === "asc") return { column, direction: "desc" };
+        if (prev.direction === "desc") return { column: null, direction: "asc" }; // turn off sorting
+      }
+      return { column, direction: "asc" };
+    });
+  };
 
   if (loading) {
     return (
@@ -595,11 +736,13 @@ const Dash = ({ darkMode = false }) => {
         {/* Table */}
         <div className="flex-1 overflow-hidden" style={{ fontFamily: "Calibri, 'Segoe UI', system-ui, sans-serif" }}>
           <CompactDataTable
-            data={activeRows}
+            data={sortedRows}
             onView={(item) => handleView(item, activeTab)}
             onEdit={(item) => handleEdit(item, activeTab)}
             onDelete={(item, id) => handleDelete(item, id, activeTab)}
             darkMode={darkMode}
+            sortConfig={sortConfig}
+            onToggleSort={toggleSort}
           />
         </div>
       </div>

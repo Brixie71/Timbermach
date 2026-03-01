@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FaArrowLeft, FaSearch } from "react-icons/fa";
+import { ArrowLeft, Search } from "lucide-react";
 import { laravelUrl } from "../../config/servers";
 
 // ==============================
@@ -323,7 +323,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
             className={["h-10 w-10 rounded-xl inline-flex items-center justify-center transition active:scale-[0.98]", darkMode ? "hover:bg-white/10" : "hover:bg-black/5"].join(" ")}
             title="Back"
           >
-            <FaArrowLeft />
+            <ArrowLeft className="h-5 w-5" strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -369,7 +369,7 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
               </>
             ) : (
               <div className={["text-center py-12", darkMode ? "text-zinc-400" : "text-zinc-500"].join(" ")}>
-                <FaSearch className="text-4xl mx-auto mb-3 opacity-50" />
+                <Search className="mx-auto mb-3 opacity-50 h-10 w-10" strokeWidth={2} />
                 <p className="text-sm">Search and select a wood species to compare.</p>
               </div>
             )}
@@ -402,7 +402,11 @@ const SpecimenComparison = ({ data, dataType, darkMode = false, onClose, onSave 
           {/* Right column: search + list */}
           <div className={["rounded-2xl border overflow-hidden flex flex-col", border, glassPanel, "backdrop-blur supports-[backdrop-filter]:backdrop-blur"].join(" ")}>
             <div className={["flex items-center gap-2 px-4 h-[52px] border-b", border].join(" ")}>
-              <FaSearch className={darkMode ? "text-zinc-400" : "text-zinc-500"} />
+              <Search
+                className={darkMode ? "text-zinc-400" : "text-zinc-500"}
+                strokeWidth={2}
+                size={18}
+              />
               <input
                 type="text"
                 placeholder={loading ? "Loading species..." : `Search species (${metricLabel})`}

@@ -9,7 +9,6 @@ electron==39.2.7
 lucide-react==0.562.0
 react==19.2.3
 react-dom==19.2.3
-react-icons==5.5.0
 serialport==13.0.0
 ws==8.19.0
 

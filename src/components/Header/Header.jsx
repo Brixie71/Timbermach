@@ -1,6 +1,5 @@
 import React from "react";
-import { IoMdMenu } from "react-icons/io";
-import { FiSun, FiMoon } from "react-icons/fi";
+import { Menu, Moon, Sun } from "lucide-react";
 
 const Header = ({
   darkMode = false,
@@ -37,7 +36,7 @@ const Header = ({
             : "text-gray-900 hover:bg-black/5",
         ].join(" ")}
       >
-        <IoMdMenu className="text-2xl" />
+        <Menu className="h-6 w-6" strokeWidth={2.2} />
       </button>
 
       {/* Center: Title */}
@@ -52,19 +51,6 @@ const Header = ({
           >
             {title}
           </h1>
-
-          {/* subtle status pill */}
-          <span
-            className={[
-              "hidden sm:inline-flex",
-              "px-2 py-0.5 rounded-full text-[11px] font-medium",
-              darkMode
-                ? "bg-white/10 text-gray-200"
-                : "bg-black/5 text-gray-700",
-            ].join(" ")}
-          >
-            Active
-          </span>
         </div>
 
         {subtitle ? (
@@ -98,7 +84,11 @@ const Header = ({
               : "text-gray-900 hover:bg-black/5",
           ].join(" ")}
         >
-          {darkMode ? <FiSun className="text-[20px]" /> : <FiMoon className="text-[20px]" />}
+          {darkMode ? (
+            <Sun className="h-5 w-5" strokeWidth={2.2} />
+          ) : (
+            <Moon className="h-5 w-5" strokeWidth={2.2} />
+          )}
         </button>
       </div>
     </header>

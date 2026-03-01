@@ -1,29 +1,63 @@
 const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
+const fs = require("fs/promises");
 
 let mainWindow;
+const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_TEST === "1";
+
+const defaultWindowState = { width: 1280, height: 800, useContentSize: true };
+
+const loadWindowState = async (statePath) => {
+  try {
+    const parsed = JSON.parse(await fs.readFile(statePath, "utf-8"));
+    return { ...defaultWindowState, ...parsed };
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Unable to read window state, using defaults:", error.message);
+    }
+    return defaultWindowState;
+  }
+};
+
+const saveWindowState = async (statePath, state) => {
+  try {
+    await fs.writeFile(statePath, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Unable to persist window state:", error.message);
+  }
+};
 
 // Reduce occlusion overhead on some iGPUs; keep GPU path simple.
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("ignore-gpu-blocklist");
 
-function createWindow() {
+async function createWindow() {
   console.log("Creating main window...");
 
+  const windowStatePath = path.join(app.getPath("userData"), "window-state.json");
+  const windowState = await loadWindowState(windowStatePath);
+
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 800,
     minHeight: 480,
+    useContentSize: true,
     title: "TimberMach - Wood Testing System",
     icon: path.join(__dirname, "../public/icon.png"),
     webPreferences: {
-      nodeIntegration: true,
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
       spellcheck: false,
       autoplayPolicy: "user-gesture-required",
       webSecurity: true,
-      allowRunningInsecureContent: true,
+      allowRunningInsecureContent: false,
+      backgroundThrottling: !isTest,
       experimentalFeatures: false,
     },
 
@@ -69,6 +103,29 @@ function createWindow() {
       .catch((err) => console.error("❌ Failed to load from build:", err));
   }
 
+  if (windowState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  let lastContentBounds = { width: windowState.width, height: windowState.height, x: windowState.x, y: windowState.y };
+
+  const captureBounds = () => {
+    if (!mainWindow.isMinimized() && !mainWindow.isFullScreen()) {
+      lastContentBounds = mainWindow.getContentBounds();
+    }
+  };
+
+  mainWindow.on("resize", captureBounds);
+  mainWindow.on("move", captureBounds);
+
+  mainWindow.on("close", async () => {
+    const stateToSave = {
+      ...lastContentBounds,
+      isMaximized: mainWindow.isMaximized(),
+    };
+    await saveWindowState(windowStatePath, stateToSave);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log("Opening external URL:", url);
     shell.openExternal(url);
@@ -105,7 +162,7 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log("========================================");
   console.log("       TIMBERMACH ELECTRON APP");
   console.log("========================================");
@@ -118,12 +175,12 @@ app.whenReady().then(() => {
   console.log("Architecture:", process.arch);
   console.log("========================================");
 
-  createWindow();
+  await createWindow();
 
-  app.on("activate", () => {
+  app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       console.log("Re-creating window (macOS activate)");
-      createWindow();
+      await createWindow();
     }
   });
 });
@@ -164,4 +221,3 @@ process.on("unhandledRejection", (reason, promise) => {
 
 console.log("✅ Electron main process loaded successfully");
 console.log("Waiting for app.whenReady()...");
-

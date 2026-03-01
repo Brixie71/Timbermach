@@ -12,6 +12,13 @@ export default defineConfig({
 
   plugins: [react()],
 
+  // Ensure Warper's WASM stays as a Vite-processed asset (not esbuild-optimized),
+  // so new URL('...wasm', import.meta.url) resolves correctly in dev and Electron.
+  optimizeDeps: {
+    exclude: ["@itsmeadarsh/warper"],
+  },
+  assetsInclude: ["**/*.wasm"],
+
   server: {
     host: true, // Allow LAN access
     port: 5173,

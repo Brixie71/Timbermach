@@ -67,16 +67,32 @@ const KiloNewtonGauge = ({
   const svgRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const pressureIntervalRef = useRef(null);
+  const pressureWorkerRef = useRef(null);
 
   // ============================================================================
   // WEBSOCKET CONNECTIONS
   // ============================================================================
 
   useEffect(() => {
+    const worker = new Worker(new URL("../../workers/pressureWorker.js", import.meta.url), { type: "module" });
+    pressureWorkerRef.current = worker;
+
+    worker.onmessage = (event) => {
+      const { type, payload } = event.data || {};
+      if (type === "update") {
+        setPressureData(payload.points || []);
+        setMaxPressure(payload.maxPressure || { value: 0, time: 0 });
+      }
+    };
+
     connectActuatorWebSocket();
     connectPressureWebSocket();
   
     return () => {
+      if (pressureWorkerRef.current) {
+        pressureWorkerRef.current.terminate();
+        pressureWorkerRef.current = null;
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -188,14 +204,11 @@ const KiloNewtonGauge = ({
 
             if (isTestRunning && testStartTime) {
               const currentTime = (Date.now() - testStartTime) / 1000;
-              
-              setPressureData(prevData => {
-                const newData = [...prevData, { time: currentTime, pressure: pressureKN }];
-                return newData;
-              });
-
-              if (pressureKN > maxPressure.value) {
-                setMaxPressure({ value: pressureKN, time: currentTime });
+              if (pressureWorkerRef.current) {
+                pressureWorkerRef.current.postMessage({
+                  type: "add",
+                  payload: { time: currentTime, pressure: pressureKN },
+                });
               }
 
               setShowWarning(pressureKN > config.warning);
@@ -395,6 +408,10 @@ const KiloNewtonGauge = ({
     setTestCompleted(false);
     setIsTestRunning(true);
     setKNValue(0);
+    
+    if (pressureWorkerRef.current) {
+      pressureWorkerRef.current.postMessage({ type: "reset" });
+    }
     
     console.log('Test started at', new Date().toISOString());
   };

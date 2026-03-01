@@ -1,11 +1,5 @@
 import React, { Suspense, useEffect, useRef, useState } from "react";
-import {
-  IoIosArrowForward,
-  IoMdMenu,
-  IoMdCog,
-  IoMdPower,
-  IoMdRefresh,
-} from "react-icons/io";
+import { ChevronLeft, Power, Settings as SettingsIcon } from "lucide-react";
 import GlobalKeyboardProvider from "./components/GlobalKeyboardProvider";
 import Header from "./components/Header/Header";
 const WoodTests = React.lazy(() => import("./components/Tests/WoodTests"));
@@ -192,88 +186,122 @@ function App() {
   const renderContent = () => {
     console.log("App: Rendering content for activeItem:", activeItem);
 
+    const ContentFallback = ({ label = "view" }) => (
+      <div className="flex h-full items-center justify-center text-sm text-gray-500">
+        Loading {label}...
+      </div>
+    );
+
     switch (activeItem) {
       case "strength-test":
-        return <WoodTests darkMode={darkMode} />;
+        return (
+          <Suspense fallback={<ContentFallback label="Strength Tests" />}>
+            <WoodTests darkMode={darkMode} />
+          </Suspense>
+        );
 
       case "settings":
         return (
-          <Settings
-            darkMode={darkMode} // ← Add if missing!
-            onNavigateToMoistureSettings={handleNavigateToMoistureSettings}
-            onNavigateToMoistureTest={handleNavigateToMoistureTest}
-            onNavigateToReferenceValues={handleNavigateToReferenceValues}
-            onNavigateToMeasurementSettings={handleNavigateToMeasurementSettings}
-            onNavigateToActuatorControl={handleNavigateToActuatorControl}
-            onNavigateToActuatorCalibration={
-              handleNavigateToActuatorCalibration
-            }
-          />
+          <Suspense fallback={<ContentFallback label="Settings" />}>
+            <Settings
+              darkMode={darkMode}
+              onNavigateToMoistureSettings={handleNavigateToMoistureSettings}
+              onNavigateToMoistureTest={handleNavigateToMoistureTest}
+              onNavigateToReferenceValues={handleNavigateToReferenceValues}
+              onNavigateToMeasurementSettings={handleNavigateToMeasurementSettings}
+              onNavigateToActuatorControl={handleNavigateToActuatorControl}
+              onNavigateToActuatorCalibration={handleNavigateToActuatorCalibration}
+            />
+          </Suspense>
         );
 
       case "moisture-settings":
         return (
-          <MoistureSettings
-            onBack={() => setActiveItem("settings")}
-            onEditCalibration={() => setActiveItem("calibration")}
-          />
+          <Suspense fallback={<ContentFallback label="Moisture Settings" />}>
+            <MoistureSettings
+              onBack={() => setActiveItem("settings")}
+              onEditCalibration={() => setActiveItem("calibration")}
+            />
+          </Suspense>
         );
 
       case "moisture-debug":
         return (
-          <div>
-            <button
-              onClick={() => setActiveItem("settings")}
+          <Suspense fallback={<ContentFallback label="Moisture Debug" />}>
+            <div>
+              <button
+                onClick={() => setActiveItem("settings")}
               className={`mb-4 px-4 py-2 rounded-lg flex items-center gap-2 ${
-                darkMode
-                  ? "bg-gray-600 text-white hover:bg-gray-500"
-                  : "bg-gray-700 text-white hover:bg-gray-600"
-              }`}
-            >
-              ← Back to Settings
-            </button>
-            <MoistureDebug />
-          </div>
+                  darkMode
+                    ? "bg-gray-600 text-white hover:bg-gray-500"
+                    : "bg-gray-700 text-white hover:bg-gray-600"
+                }`}
+              >
+                Back to Settings
+              </button>
+              <MoistureDebug />
+            </div>
+          </Suspense>
         );
 
       case "calibration":
         return (
-          <SevenSegmentCalibration
-            onComplete={() => setActiveItem("moisture-settings")}
-            onCancel={() => setActiveItem("moisture-settings")}
-          />
+          <Suspense fallback={<ContentFallback label="Calibration" />}>
+            <SevenSegmentCalibration
+              onComplete={() => setActiveItem("moisture-settings")}
+              onCancel={() => setActiveItem("moisture-settings")}
+            />
+          </Suspense>
         );
 
       case "reference-values":
-        return <ReferenceValues darkMode={darkMode} />;
+        return (
+          <Suspense fallback={<ContentFallback label="Reference Values" />}>
+            <ReferenceValues darkMode={darkMode} />
+          </Suspense>
+        );
 
       case "actuator-control":
         console.log("App: Rendering ActuatorControl");
         return (
-          <div>
-            <button
-              onClick={() => setActiveItem("settings")}
+          <Suspense fallback={<ContentFallback label="Actuator Control" />}>
+            <div>
+              <button
+                onClick={() => setActiveItem("settings")}
               className={`mb-4 px-4 py-2 rounded-lg flex items-center gap-2 ${
-                darkMode
-                  ? "bg-gray-600 text-white hover:bg-gray-500"
-                  : "bg-gray-700 text-white hover:bg-gray-600"
-              }`}
-            >
-              ← Back to Settings
-            </button>
-            <ActuatorControl />
-          </div>
+                  darkMode
+                    ? "bg-gray-600 text-white hover:bg-gray-500"
+                    : "bg-gray-700 text-white hover:bg-gray-600"
+                }`}
+              >
+                Back to Settings
+              </button>
+              <ActuatorControl />
+            </div>
+          </Suspense>
         );
 
       case "actuator-calibration":
         console.log("App: Rendering ActuatorCalibration");
-        return <ActuatorCalibration onBack={() => setActiveItem("settings")} />;
+        return (
+          <Suspense fallback={<ContentFallback label="Actuator Calibration" />}>
+            <ActuatorCalibration onBack={() => setActiveItem("settings")} />
+          </Suspense>
+        );
 
       case "measurement-settings":
-        return <MeasurementSettings onBack={() => setActiveItem("settings")} />;
+        return (
+          <Suspense fallback={<ContentFallback label="Measurement Settings" />}>
+            <MeasurementSettings onBack={() => setActiveItem("settings")} />
+          </Suspense>
+        );
 
       default:
-        return <Dash darkMode={darkMode} />;
+        return (
+          <Suspense fallback={<ContentFallback label="Dashboard" />}>
+            <Dash darkMode={darkMode} />
+          </Suspense>
+        );
     }
   };
 
@@ -370,7 +398,7 @@ function App() {
                 darkMode ? "hover:bg-white/10" : "hover:bg-black/5",
               ].join(" ")}
             >
-              <IoIosArrowForward className="text-xl rotate-180" />
+              <ChevronLeft className="text-xl" strokeWidth={2.2} />
             </button>
           </div>
 
@@ -409,7 +437,7 @@ function App() {
             <SidebarItem
               darkMode={darkMode}
               active={activeItem === "settings"}
-              icon={<IoMdCog className="text-xl" />}
+              icon={<SettingsIcon className="text-xl" size={20} strokeWidth={2.2} />}
               label="Settings"
               onClick={() => {
                 setActiveItem("settings");
@@ -441,7 +469,7 @@ function App() {
                   : "bg-red-500/10 text-red-600 hover:bg-red-500/15",
               ].join(" ")}
             >
-              <IoMdPower className="text-xl" />
+              <Power className="text-xl" size={20} strokeWidth={2.2} />
               Power Off
             </button>
           </div>
