@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import "./WoodTests.css";
 import { useTouchControls } from "../../Utils/TouchControls";
 import KiloNewtonGauge from "./KiloNewtonGuage";
 import MoistureTestPage from "./MoistureTest";
 import DimensionMeasurementPage from "./Measurement";
 import TestSummary from "./TestSummary";
+import { useVirtualizer } from "@itsmeadarsh/warper";
 
 const StageResultView = ({
   darkMode = false,
@@ -16,6 +17,14 @@ const StageResultView = ({
   onBackToMenu = () => {},
   onReviewCapture = null,
 }) => {
+  const listRef = useRef(null);
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 52,
+    overscan: 3,
+  });
+
   return (
     <div className={`w-full h-full flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
       <div
@@ -36,31 +45,37 @@ const StageResultView = ({
         ) : null}
       </div>
 
-      <div className="flex-1 p-5 overflow-auto">
+      <div className="flex-1 p-5 overflow-auto" ref={listRef}>
         <div
-          className={`rounded-xl border ${
+          className={`relative rounded-xl border ${
             darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-white"
           }`}
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
         >
-          {rows.map((row, idx) => (
-            <div
-              key={`${row.label}-${idx}`}
-              className={`px-4 py-3 flex items-center justify-between ${
-                idx !== rows.length - 1
-                  ? darkMode
-                    ? "border-b border-gray-700"
-                    : "border-b border-gray-200"
-                  : ""
-              }`}
-            >
-              <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                {row.label}
-              </span>
-              <span className={`text-lg font-semibold ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
-                {row.value}
-              </span>
-            </div>
-          ))}
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = rows[virtualRow.index];
+            const isLast = virtualRow.index === rows.length - 1;
+            return (
+              <div
+                key={`${row.label}-${virtualRow.index}`}
+                className={`px-4 py-3 flex items-center justify-between absolute left-0 right-0 ${
+                  !isLast
+                    ? darkMode
+                      ? "border-b border-gray-700"
+                      : "border-b border-gray-200"
+                    : ""
+                }`}
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
+              >
+                <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  {row.label}
+                </span>
+                <span className={`text-lg font-semibold ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
+                  {row.value}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
