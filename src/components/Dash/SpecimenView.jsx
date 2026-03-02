@@ -68,7 +68,7 @@ function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = fal
   useEffect(() => {
     const v = Math.max(0, Math.min(100, Number(value) || 0));
     const remainder = 100 - v;
-    const size = 160;
+    const size = 265; // ~3% larger than previous 257
     const radius = size / 2;
     const thickness = donut ? 28 : radius;
 
@@ -538,7 +538,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   }, [currentData, dataType, referenceData]);
 
   const specimenId = currentData?.compressive_id || currentData?.shear_id || currentData?.flexure_id || "-";
-  const specimenName = currentData?.specimen_name || "Specimen";
+  const specimenName = currentData?.specimen_name || "Mango Tremew";
   const testType = currentData?.test_type || "-";
   const createdAt = formatDbDateTime(currentData?.created_at);
   const updatedAt = formatDbDateTime(currentData?.updated_at);
@@ -552,6 +552,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   const shell = darkMode ? "bg-[#0b1527] text-gray-100" : "bg-[#f4f7fc] text-gray-900";
   const border = darkMode ? "border-[#1f3252]" : "border-[#d6e3f7]";
   const headerSurface = darkMode ? "bg-[#0e1c33] border-[#1f3252]" : "bg-white border-[#d6e3f7]";
+  const headerLine = `${specimenName} | ${referenceData ? speciesLabel || "Apitong" : "No Comparison"}`;
 
   const acc = n2(computed.accuracy);
   const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
@@ -591,8 +592,12 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
 
     if (which === "accuracy") {
       payload.title = "Accuracy vs Reference";
-      payload.equation = "Accuracy (%) = (Experimental / Reference) x 100";
-      payload.steps = [`= (${f2(exp)} / ${f2(ref)}) x 100`, `= ${f2(accPct)} %`];
+      payload.equation = "Accuracy (%) = (Experimental Stress / Reference Stress) x 100";
+      payload.steps = [
+        `Experimental Stress = ${f2(exp)} MPa`,
+        `Reference Stress = ${f2(ref)} MPa`,
+        `= (${f2(exp)} (Experimental Stress) / ${f2(ref)} (Reference Stress)) x 100`,
+      ];
       payload.result = `${f2(accPct)} %`;
     }
 
@@ -665,13 +670,6 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
       payload.result = `${f2(ref)} MPa`;
     }
 
-    if (which === "moisture") {
-      payload.title = "Moisture Content";
-      payload.equation = "Moisture (%) = stored reading";
-      payload.steps = [`Moisture = ${Number.isFinite(moistureNum) ? f2(moistureNum) : "-"} %`];
-      payload.result = `${Number.isFinite(moistureNum) ? f2(moistureNum) : "-"} %`;
-    }
-
     if (!payload.title) return;
     setEqPayload(payload);
     setEqOpen(true);
@@ -700,16 +698,16 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               className="text-lg font-black truncate"
               style={{ color: darkMode ? "#e5ecff" : PALETTE.primary }}
             >
-              {specimenName || "Specimen"}
-            </div>
-            <div
-              className={["text-sm truncate", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}
-              style={{ color: darkMode ? "#c7d4f5" : undefined }}
-            >
-              {speciesLabel || "No reference species selected"}
+              {headerLine}
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowComparison(true)}
+              className="h-10 px-4 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Compare
+            </button>
             <button
               onClick={onClose}
               className={[
@@ -727,7 +725,15 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Charts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-2 md:p-2.5`}>
+          <div
+            className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-2 md:p-2.5 cursor-pointer transition hover:-translate-y-[1px] active:scale-[0.995]`}
+            onClick={() => openEquation("accuracy")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") openEquation("accuracy");
+            }}
+          >
             <div className="flex items-center justify-between mb-3">
               <div
                 className="text-sm font-bold text-blue-900 dark:text-blue-200"
@@ -735,26 +741,16 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               >
                 Accuracy vs Reference
               </div>
-              <div className="text-xs font-semibold text-gray-500">{n2(computed.accuracy).toFixed(1)}%</div>
             </div>
-            <div className="grid grid-cols-[130px,1fr] gap-3 items-center">
-              <div className="w-full h-full max-w-[130px] mx-auto flex items-center justify-center">
+            <div className="flex items-center justify-center py-3">
+              <div className="w-full h-full max-w-[231px] mx-auto">
                 <GaugeChart
                   value={n2(computed.accuracy)}
                   label="Accuracy"
                   color={colorForPercent(n2(computed.accuracy), "accuracy")}
                   darkMode={darkMode}
+                  donut
                 />
-              </div>
-              <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-700"} space-y-1`}>
-                <div>Experimental: {n2(computed.exp).toFixed(2)} MPa</div>
-                <div>Reference: {n2(computed.ref).toFixed(2)} MPa</div>
-                <button
-                  onClick={() => openEquation("accuracy")}
-                  className="mt-2 inline-flex items-center px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  View formula
-                </button>
               </div>
             </div>
           </div>
@@ -767,10 +763,9 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               >
                 Moisture Content
               </div>
-              <div className="text-xs font-semibold text-gray-500">{moistureTxt}%</div>
             </div>
-            <div className="grid grid-cols-[130px,1fr] gap-3 items-center">
-              <div className="w-full h-full max-w-[130px] mx-auto flex items-center justify-center">
+            <div className="flex items-center justify-center py-3">
+              <div className="w-full h-full max-w-[231px] mx-auto">
                 <GaugeChart
                   value={Number.isFinite(moistureNum) ? moistureNum : 0}
                   label="Moisture"
@@ -778,15 +773,6 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
                   darkMode={darkMode}
                   donut
                 />
-              </div>
-              <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-700"} space-y-1`}>
-                <div>Stored reading: {moistureTxt}%</div>
-                <button
-                  onClick={() => openEquation("moisture")}
-                  className="mt-2 inline-flex items-center px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  View details
-                </button>
               </div>
             </div>
           </div>
@@ -823,29 +809,6 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
             selectable
             onSelect={() => openEquation("refStress")}
           />
-        </div>
-
-        {/* Reference card with compare control */}
-        <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-4`}>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div
-                className="text-sm font-bold text-blue-900 dark:text-blue-200"
-                style={{ color: darkMode ? undefined : PALETTE.primary }}
-              >
-                Reference Species
-              </div>
-              <div className={`text-base font-semibold ${darkMode ? "text-gray-100" : "text-gray-800"}`}>
-                {referenceData ? speciesLabel : "No reference selected"}
-              </div>
-            </div>
-            <button
-              onClick={() => setShowComparison(true)}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
-            >
-              Compare
-            </button>
-          </div>
         </div>
 
         {/* Table */}
