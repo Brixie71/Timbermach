@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import "./WoodTests.css";
 import { useTouchControls } from "../../Utils/TouchControls";
 import KiloNewtonGauge from "./KiloNewtonGuage";
@@ -17,13 +17,16 @@ const StageResultView = ({
   onBackToMenu = () => {},
   onReviewCapture = null,
 }) => {
-  const listRef = useRef(null);
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => listRef.current,
+  // Warper API: returns scrollElementRef, range, totalHeight
+  const { scrollElementRef, range, totalHeight } = useVirtualizer({
+    itemCount: rows.length,
     estimateSize: () => 52,
     overscan: 3,
+    // Attach scroll ref provided by the hook
+    height: "100%",
   });
+  // Use provided ref for scrolling container
+  const totalHeightPx = Number.isFinite(totalHeight) ? totalHeight : rows.length * 52;
 
   return (
     <div className={`w-full h-full flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
@@ -45,33 +48,37 @@ const StageResultView = ({
         ) : null}
       </div>
 
-      <div className="flex-1 p-5 overflow-auto" ref={listRef}>
+      <div className="flex-1 p-5 overflow-auto" ref={scrollElementRef}>
         <div
           className={`relative rounded-xl border ${
             darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-white"
           }`}
-          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          style={{ height: `${totalHeightPx}px` }}
         >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = rows[virtualRow.index];
-            const isLast = virtualRow.index === rows.length - 1;
+          {range?.items?.map((index, i) => {
+            const row = rows[index];
+            const isLast = index === rows.length - 1;
+            const offset = range.offsets?.[i] ?? 0;
             return (
               <div
-                key={`${row.label}-${virtualRow.index}`}
+                key={`${row?.label ?? "row"}-${index}`}
                 className={`px-4 py-3 flex items-center justify-between absolute left-0 right-0 ${
                   !isLast
                     ? darkMode
                       ? "border-b border-gray-700"
-                      : "border-b border-gray-200"
+                    : "border-b border-gray-200"
                     : ""
                 }`}
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
+                style={{
+                  transform: `translateY(${offset}px)`,
+                  height: `${range?.sizes?.[i] ?? 52}px`,
+                }}
               >
                 <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                  {row.label}
+                  {row?.label}
                 </span>
                 <span className={`text-lg font-semibold ${darkMode ? "text-gray-100" : "text-gray-900"}`}>
-                  {row.value}
+                  {row?.value}
                 </span>
               </div>
             );
@@ -150,6 +157,7 @@ const WoodTests = ({ darkMode = false }) => {
   const [reviewImage, setReviewImage] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const DRAFT_KEY = "timbermach:testDraft:v1";
 
   // Test data storage
   const [testData, setTestData] = useState({
@@ -160,6 +168,107 @@ const WoodTests = ({ darkMode = false }) => {
     measurementData: null,
     strengthData: null,
   });
+
+  // ---------- Draft persistence (localStorage) ----------
+  const pruneMeasurement = (m) =>
+    m
+      ? {
+          width: m.width ?? m.base ?? null,
+          height: m.height ?? null,
+          length: m.length ?? null,
+          areaMM2: m.areaMM2 ?? m.area ?? null,
+          timestamp: m.timestamp ?? m.capturedAt ?? null,
+        }
+      : null;
+
+  const pruneMoisture = (m) =>
+    m
+      ? {
+          value: m.value ?? m.numeric ?? null,
+          method: m.method ?? null,
+          timestamp: m.timestamp ?? m.capturedAt ?? null,
+        }
+      : null;
+
+  const pruneStrength = (s) =>
+    s
+      ? {
+          maxPressureMPa: s.maxPressureMPa ?? s.maxForce ?? null,
+          maxForce: s.maxForce ?? null,
+          forceKN: s.forceKN ?? null,
+          duration: s.duration ?? null,
+          timestamp: s.timestamp ?? null,
+          simulated: s.simulated ?? false,
+        }
+      : null;
+
+  // load draft once
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      setSelectedTest(d.selectedTest || null);
+      setSubType(d.subType || "");
+      setSpecimenName(d.specimenName || "");
+      setIncludeMeasurement(Boolean(d.includeMeasurement));
+      setIncludeMoisture(Boolean(d.includeMoisture));
+      setCurrentTestStage(d.currentTestStage || "selection");
+      setTestStarted(Boolean(d.testStarted));
+      setTestData((prev) => ({
+        ...prev,
+        testType: d.testData?.testType || "",
+        subType: d.testData?.subType || "",
+        specimenName: d.testData?.specimenName || "",
+        moistureData: d.testData?.moistureData || null,
+        measurementData: d.testData?.measurementData || null,
+        strengthData: d.testData?.strengthData || null,
+      }));
+    } catch (e) {
+      console.warn("Failed to load draft", e);
+      localStorage.removeItem(DRAFT_KEY);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // save draft when key state changes
+  useEffect(() => {
+    try {
+      const payload = {
+        selectedTest,
+        subType,
+        specimenName,
+        includeMeasurement,
+        includeMoisture,
+        currentTestStage,
+        testStarted,
+        testData: {
+          ...testData,
+          moistureData: pruneMoisture(testData.moistureData),
+          measurementData: pruneMeasurement(testData.measurementData),
+          strengthData: pruneStrength(testData.strengthData),
+        },
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("Failed to save draft", e);
+    }
+  }, [
+    selectedTest,
+    subType,
+    specimenName,
+    includeMeasurement,
+    includeMoisture,
+    currentTestStage,
+    testStarted,
+    testData,
+  ]);
+
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+  };
 
   // Updated with correct image paths from your code
   const tests = [
@@ -610,6 +719,23 @@ const WoodTests = ({ darkMode = false }) => {
   if (!selectedTest) {
     return (
       <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-white"}`}>
+        <div className="flex justify-end px-4 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft();
+              resetSelections();
+            }}
+            className={`text-xs px-3 py-1 rounded-lg border ${
+              darkMode
+                ? "border-gray-700 text-gray-300 hover:bg-white/5"
+                : "border-gray-300 text-gray-700 hover:bg-black/5"
+            }`}
+            title="Remove saved draft data"
+          >
+            Clear saved draft
+          </button>
+        </div>
         <div className="flex-1 flex items-start justify-center px-0 pt-0">
           <div
             onClick={() => !isDragging && !isAnimating && handleTestClick(tests[currentCardIndex].title)}

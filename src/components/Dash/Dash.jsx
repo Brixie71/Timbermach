@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import SpecimenView from "./SpecimenView";
 import DataEdit from "./SpecimenEdit";
 import { laravelUrl } from "../../config/servers";
-import { useVirtualizer } from "@itsmeadarsh/warper";
 
 // Keep in sync with Header height in App/Header.jsx
 const HEADER_H = 64;
@@ -251,13 +250,21 @@ const CompactDataTable = ({
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedItemId, setSelectedItemId] = useState(null);
-  const estimateSize = useCallback(() => 68, []);
-  const { scrollElementRef, range, totalHeight, isLoading: isVirtualizerLoading, error: virtualizerError } =
-    useVirtualizer({
-      itemCount: data?.length ?? 0,
-      estimateSize, // typical row height; adjust if design changes
-      overscan: 8,
-    });
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+
+  const total = data?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = (page - 1) * pageSize;
+  const visibleRows = (data || []).slice(start, start + pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize, data]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const handleOpenActionModal = (item, itemId) => {
     setSelectedItem(item);
@@ -288,7 +295,65 @@ const CompactDataTable = ({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto" ref={scrollElementRef}>
+      {/* Pagination controls */}
+      <div className="flex items-center justify-between px-2 py-2 text-xs sm:text-sm">
+        <div className="flex items-center gap-2">
+          <span className={darkMode ? "text-gray-300" : "text-gray-700"}>Rows per page:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className={`border rounded px-2 py-1 text-sm ${
+              darkMode ? "bg-gray-900 border-gray-700 text-gray-100" : "bg-white border-gray-300 text-gray-900"
+            }`}
+          >
+            {[10, 20, 50].map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={darkMode ? "text-gray-300" : "text-gray-700"}>
+            Showing {total === 0 ? 0 : start + 1}–{Math.min(total, start + pageSize)} of {total}
+          </span>
+          <div className="flex items-center border rounded overflow-hidden">
+            <button
+              className={`px-2 py-1 text-sm ${darkMode ? "bg-gray-800 text-gray-200" : "bg-white text-gray-800"}`}
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+            >
+              «
+            </button>
+            <button
+              className={`px-2 py-1 text-sm ${darkMode ? "bg-gray-800 text-gray-200" : "bg-white text-gray-800"}`}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              ‹
+            </button>
+            <span className={`px-3 py-1 text-sm ${darkMode ? "bg-gray-900 text-gray-100" : "bg-gray-100 text-gray-900"}`}>
+              {page}/{totalPages}
+            </span>
+            <button
+              className={`px-2 py-1 text-sm ${darkMode ? "bg-gray-800 text-gray-200" : "bg-white text-gray-800"}`}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              ›
+            </button>
+            <button
+              className={`px-2 py-1 text-sm ${darkMode ? "bg-gray-800 text-gray-200" : "bg-white text-gray-800"}`}
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+            >
+              »
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
         <table
           className={[
             "w-full border-collapse",
@@ -343,46 +408,16 @@ const CompactDataTable = ({
           </thead>
 
           <tbody>
-            {virtualizerError ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className={`border ${borderCls} px-4 py-6 text-center text-sm ${
-                    darkMode ? "text-red-300" : "text-red-700"
-                  }`}
-                >
-                  Failed to initialize list: {virtualizerError.message}
-                </td>
-              </tr>
-            ) : isVirtualizerLoading ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className={`border ${borderCls} px-4 py-6 text-center text-sm ${
-                    darkMode ? "text-gray-300" : "text-gray-700"
-                  }`}
-                >
-                  Loading list...
-                </td>
-              </tr>
-            ) : data && data.length > 0 ? (
+            {data && data.length > 0 ? (
               <>
-                {range.items.length > 0 && range.offsets[0] > 0 ? (
-                  <tr style={{ height: range.offsets[0] }} aria-hidden="true">
-                    <td colSpan={5} style={{ padding: 0, border: "none" }} />
-                  </tr>
-                ) : null}
-
-                {range.items.map((index, i) => {
-                  const row = data[index];
+                {visibleRows.map((row, i) => {
                   const itemId =
-                    row.compressive_id || row.shear_id || row.flexure_id || row.ID || index;
+                    row.compressive_id || row.shear_id || row.flexure_id || row.ID || start + i;
 
                   return (
                     <tr
                       key={itemId}
                       className={`transition-colors ${hoverBg}`}
-                      style={{ height: range.sizes[i] }}
                     >
                       <td
                         className={`border ${borderCls} ${tdBase} font-semibold`}
@@ -440,22 +475,6 @@ const CompactDataTable = ({
                     </tr>
                   );
                 })}
-
-                {range.items.length > 0 ? (
-                  <tr
-                    style={{
-                      height: Math.max(
-                        0,
-                        totalHeight -
-                          (range.offsets[range.offsets.length - 1] +
-                            range.sizes[range.sizes.length - 1])
-                      ),
-                    }}
-                    aria-hidden="true"
-                  >
-                    <td colSpan={5} style={{ padding: 0, border: "none" }} />
-                  </tr>
-                ) : null}
               </>
             ) : (
               <tr>
