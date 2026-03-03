@@ -556,6 +556,16 @@ const Dash = ({ darkMode = false }) => {
     setShowSpecimenView(true);
   };
 
+  const closeSpecimenView = async () => {
+    setShowSpecimenView(false);
+    setSelectedSpecimen(null);
+    try {
+      await fetchAllData();
+    } catch (e) {
+      console.error("Failed to refresh data after closing specimen view", e);
+    }
+  };
+
   const handleEdit = (item, type) => {
     setSelectedSpecimen(item);
     setSelectedDataType(type);
@@ -671,7 +681,7 @@ const Dash = ({ darkMode = false }) => {
         data={selectedSpecimen}
         dataType={selectedDataType}
         darkMode={darkMode}
-        onClose={() => setShowSpecimenView(false)}
+        onClose={closeSpecimenView}
       />
     );
   }

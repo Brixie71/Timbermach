@@ -65,55 +65,128 @@ const adjustForTheme = (color, darkMode) =>
 // Simple chart component (pie or doughnut) using D3
 function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = false }) {
   const ref = useRef(null);
+  const prevValRef = useRef(0);
+  const firstRenderRef = useRef(true);
+  const prevDarkRef = useRef(darkMode);
   useEffect(() => {
     const v = Math.max(0, Math.min(100, Number(value) || 0));
-    const remainder = 100 - v;
-    const size = 265; // ~3% larger than previous 257
-    const radius = size / 2;
-    const thickness = donut ? 28 : radius;
+    const prev = Math.max(0, Math.min(100, Number(prevValRef.current) || 0));
+    prevValRef.current = v;
 
-    const data = [
-      { label: "value", val: v, color: adjustForTheme(color, darkMode) },
-      { label: "rest", val: remainder, color: darkMode ? "#1f2937" : "#dbe5f5" },
-    ];
+    const size = 219; // gauge size (~10% smaller)
+    const radius = size / 2;
+    const thickness = donut ? 45 : radius; // keep ring proportional with smaller size
+    const sweep = Math.PI * 2; // full circle
+    const startAngle = Math.PI; // start at 180° (left in d3's top-origin system, gap at bottom after sweep)
+    const endAngle = startAngle + sweep;
+    const angleFor = (pct) => startAngle + (sweep * pct) / 100;
+    const restColor = darkMode ? "#111827" : "#e5eaf3"; // clearer dark/light backgrounds
 
     const arc = d3
       .arc()
       .innerRadius(donut ? radius - thickness : 0)
       .outerRadius(radius - 4);
 
-    const pie = d3.pie().value((d) => d.val);
+    const svg = d3.select(ref.current).attr("viewBox", `0 0 ${size} ${size}`).attr("role", "img");
+    // If theme changed, clear to avoid stale colors
+    if (prevDarkRef.current !== darkMode) {
+      svg.selectAll("*").remove();
+      prevDarkRef.current = darkMode;
+      firstRenderRef.current = true;
+    }
+    let g = svg.select("g.gauge-root");
+    if (g.empty()) {
+      g = svg.append("g").attr("class", "gauge-root").attr("transform", `translate(${radius},${radius})`);
+    }
+    const baseTransform = `translate(${radius},${radius})`;
 
-    const svg = d3.select(ref.current);
-    svg.selectAll("*").remove();
-    const g = svg
-      .attr("viewBox", `0 0 ${size} ${size}`)
-      .attr("role", "img")
-      .append("g")
-      .attr("transform", `translate(${radius},${radius})`);
+    // Background arc (full 360 sweep)
+    const bg = g.selectAll("path.gc-bg").data([null]);
+    bg.enter()
+      .append("path")
+      .attr("class", "gc-bg")
+      .attr("fill", restColor)
+      .merge(bg)
+      .attr("d", arc({ startAngle, endAngle }));
 
-    g.selectAll("path")
-      .data(pie(data))
+    // Outline stroke around the gauge for contrast
+    const outlineColor = darkMode ? "#9ca3af" : "#9ca3af"; // lower contrast gray
+    const outline = g.selectAll("circle.gc-outline").data([null]);
+    outline
+      .enter()
+      .append("circle")
+      .attr("class", "gc-outline")
+      .merge(outline)
+      .attr("r", radius - 2)
+      .attr("fill", "none")
+      .attr("stroke", outlineColor)
+      .attr("stroke-width", 2);
+    outline.exit().remove();
+
+    // Value arc with tween from previous angle
+    const val = g.selectAll("path.gc-val").data([v]);
+    const isFirst = firstRenderRef.current;
+    const dur = isFirst ? 1100 : 875;
+    val
       .enter()
       .append("path")
-      .attr("d", arc)
-      .attr("fill", (d) => d.data.color);
+      .attr("class", "gc-val")
+      .attr("fill", adjustForTheme(color, darkMode))
+      .each(function () {
+        this._current = isFirst ? startAngle : angleFor(prev);
+      })
+      .merge(val)
+      .transition()
+      .duration(dur)
+      .ease(isFirst ? d3.easeElasticOut : d3.easeCubicOut)
+      .attrTween("d", function (d) {
+        const interpolate = d3.interpolateNumber(this._current, angleFor(d));
+        this._current = interpolate(1);
+        return (t) => arc({ startAngle, endAngle: interpolate(t) });
+      })
+      .attr("fill", adjustForTheme(color, darkMode));
 
-    g.append("text")
+    val.exit().remove();
+
+    const valueText = g.selectAll("text.gc-value").data([v]);
+    const mergedValue = valueText
+      .enter()
+      .append("text")
+      .attr("class", "gc-value")
       .attr("text-anchor", "middle")
-      .attr("dy", "0.3em")
-      .attr("fill", darkMode ? "#f9fafb" : "#0f172a")
-      .style("font-size", "22px")
+      .attr("dominant-baseline", "middle")
+      .attr("dy", "-0.07em") // raise text ~7% to align center visually
+      .style("font-size", "35px") // 20% bigger than previous 29px
       .style("font-weight", "800")
-      .text(`${v.toFixed(1)}%`);
+      .text(`${prev.toFixed(1)}%`)
+      .merge(valueText)
+      .attr("fill", darkMode ? "#f9fafb" : "#0f172a")
+      .attr("dy", "-0.07em"); // ensure updates keep offset
 
-    g.append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", "2.1em")
-      .attr("fill", darkMode ? "#cbd5e1" : "#475569")
-      .style("font-size", "12px")
-      .style("font-weight", "700")
-      .text(label || "");
+    mergedValue
+      .transition()
+      .duration(dur)
+      .ease(d3.easeQuadOut)
+      .tween("text", function (d) {
+        const that = d3.select(this);
+        const i = d3.interpolateNumber(prev, d);
+        return (t) => that.text(`${i(t).toFixed(1)}%`);
+      });
+
+    // Subtle pulse on update to highlight change
+    g.interrupt("pulse")
+      .attr("transform", baseTransform)
+      .transition("pulse")
+      .duration(150)
+      .ease(d3.easeCubicOut)
+      .attr("transform", `${baseTransform} scale(1.02)`)
+      .transition("pulse")
+      .duration(150)
+      .ease(d3.easeCubicIn)
+      .attr("transform", baseTransform);
+
+    g.selectAll("text.gc-label").remove(); // remove label under percentage
+    firstRenderRef.current = false;
   }, [value, label, color, darkMode, donut]);
 
   return <svg ref={ref} className="w-full h-full" />;
@@ -371,6 +444,7 @@ function EquationModal({ open, onClose, darkMode, title, equation, steps, result
   const panel = darkMode
     ? "bg-gray-900/85 border-gray-800 text-gray-100"
     : "bg-white/85 border-gray-200 text-gray-900";
+  const resultPanel = darkMode ? "bg-[#10294f] text-[#e5ecff]" : "bg-[#e8f1ff] text-[#0f2f5f]";
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-3" onClick={onClose}>
@@ -406,33 +480,28 @@ function EquationModal({ open, onClose, darkMode, title, equation, steps, result
             <div className={["text-[12px] font-extrabold tracking-wide", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
               Formula
             </div>
-            <div className="mt-1 text-[22px] font-black tracking-tight tabular-nums">{equation}</div>
+            <div className="mt-1 text-[15px] font-black tracking-tight tabular-nums">{equation}</div>
           </div>
 
-          {steps?.length ? (
-            <div className={["rounded-xl border p-4", border].join(" ")}>
-              <div className={["text-[12px] font-extrabold tracking-wide", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
-                Substitution
-              </div>
-              <div className="mt-2 grid gap-2 text-[14px] font-semibold tabular-nums">
-                {steps.map((s, i) => (
-                  <div key={i}>{s}</div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {result ? (
-            <div className={["rounded-xl border px-4 py-4 flex items-baseline justify-between gap-3", border, "bg-blue-500/10"].join(" ")}>
-              <div>
+          {steps?.length || result ? (
+            <div className={["rounded-xl border", border, "grid grid-cols-1 md:grid-cols-2"].join(" ")}>
+              <div className="p-4">
                 <div className={["text-[12px] font-extrabold tracking-wide", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
-                  Result
+                  Substitution
                 </div>
-                <div className="text-[22px] font-black tabular-nums">{result}</div>
+                <div className="mt-2 grid gap-2 text-[14px] font-semibold tabular-nums">
+                  {steps?.length
+                    ? steps.map((s, i) => <div key={i}>{s}</div>)
+                    : null}
+                </div>
               </div>
-              <div className={["text-[12px] font-semibold", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
-                computed from current specimen
-              </div>
+              {result ? (
+                <div className={["p-4 md:border-l", border, resultPanel, "flex flex-col gap-1 text-center md:text-left"].join(" ")}>
+                  <div className="text-[12px] font-extrabold tracking-wide">Result</div>
+                  <div className="text-[22px] font-black tabular-nums">{result}</div>
+                  <div className="text-[12px] font-semibold">computed from current specimen</div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -448,6 +517,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   const [referenceData, setReferenceData] = useState(null);
   const [loadingRef, setLoadingRef] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [showDates, setShowDates] = useState(false);
   const [currentData, setCurrentData] = useState(data);
 
   const [eqOpen, setEqOpen] = useState(false);
@@ -455,8 +525,18 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
 
   const isRefreshingRef = useRef(false);
 
+  const specimenKey = (row) => row?.compressive_id || row?.shear_id || row?.flexure_id || row?.id || null;
+
   useEffect(() => {
-    if (!isRefreshingRef.current) setCurrentData(data);
+    if (isRefreshingRef.current) return;
+    const incomingKey = specimenKey(data);
+    setCurrentData((prev) => {
+      const prevKey = specimenKey(prev);
+      // Only overwrite when navigating to a different specimen.
+      if (prevKey !== incomingKey) return data;
+      // Keep existing (possibly fresher) data for same specimen.
+      return prev ?? data;
+    });
   }, [data]);
 
   useEffect(() => {
@@ -548,20 +628,31 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
     : referenceData?.common_name ||
       referenceData?.species_name ||
       (currentData?.species_id ? `Species #${currentData.species_id}` : "No reference");
+  const accuracyTitle = referenceData
+    ? `Accuracy vs Reference | ${speciesLabel}`
+    : "Accuracy vs Reference | Nothing to Compare";
 
-  const shell = darkMode ? "bg-[#0b1527] text-gray-100" : "bg-[#f4f7fc] text-gray-900";
-  const border = darkMode ? "border-[#1f3252]" : "border-[#d6e3f7]";
-  const headerSurface = darkMode ? "bg-[#0e1c33] border-[#1f3252]" : "bg-white border-[#d6e3f7]";
-  const headerLine = `${specimenName} | ${referenceData ? speciesLabel || "Apitong" : "No Comparison"}`;
+  const shell = darkMode ? "bg-[#0b1527] text-gray-100" : "bg-[#edf1f7] text-gray-900";
+  const border = darkMode ? "border-2 border-[#1f3252]" : "border-2 border-[#c9d4e8]";
+  const headerSurface = darkMode ? "bg-[#0e1c33] border-[#1f3252]" : "bg-white border-[#c9d4e8]";
+  // higher-contrast divider between charts
+  const divider = darkMode ? "border-[#3b5b9a]" : "border-[#6b7280]";
+  const headerLine = `${prettyMode(computed.mode) || "Test Type"} | ${specimenName || "Specimen"}`;
 
-  const acc = n2(computed.accuracy);
-  const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
+const acc = n2(computed.accuracy);
+const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
 
-  const moistureNum =
-    currentData?.moisture_content !== undefined && currentData?.moisture_content !== null
-      ? n2(currentData.moisture_content)
-      : NaN;
-  const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
+const moistureNum =
+  currentData?.moisture_content !== undefined && currentData?.moisture_content !== null
+    ? n2(currentData.moisture_content)
+    : NaN;
+const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
+
+  const handleComparisonSave = (updated) => {
+    if (!updated) return;
+    setCurrentData(updated);
+    if (updated.species_id) fetchReferenceData(updated.species_id);
+  };
 
   function openEquation(which) {
     const f2 = (x) => n2(x).toFixed(2);
@@ -583,20 +674,11 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
 
     let payload = { title: "", equation: "", steps: [], result: "" };
 
-    if (which === "mode") {
-      payload.title = "Test Mode (from test_type)";
-      payload.equation = "Mode = derived from database test_type";
-      payload.steps = [`test_type = "${String(testType)}"`, `mode = "${prettyMode(mode)}"`];
-      payload.result = prettyMode(mode);
-    }
-
     if (which === "accuracy") {
-      payload.title = "Accuracy vs Reference";
+      payload.title = accuracyTitle;
       payload.equation = "Accuracy (%) = (Experimental Stress / Reference Stress) x 100";
       payload.steps = [
-        `Experimental Stress = ${f2(exp)} MPa`,
-        `Reference Stress = ${f2(ref)} MPa`,
-        `= (${f2(exp)} (Experimental Stress) / ${f2(ref)} (Reference Stress)) x 100`,
+        `= (${f2(exp)} / ${f2(ref)}) x 100`,
       ];
       payload.result = `${f2(accPct)} %`;
     }
@@ -675,20 +757,6 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
     setEqOpen(true);
   }
 
-  if (showComparison) {
-    return (
-      <SpecimenComparison
-        data={currentData}
-        dataType={dataType}
-        darkMode={darkMode}
-        onClose={() => {
-          setShowComparison(false);
-          refreshSpecimenData();
-        }}
-      />
-    );
-  }
-
   return (
     <div className={`w-full h-full flex flex-col ${shell}`} style={{ fontFamily: "Segoe UI, system-ui, sans-serif" }}>
       <div className={["sticky top-0 z-20 border-b", border, headerSurface].join(" ")}>
@@ -701,12 +769,17 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               {headerLine}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowComparison(true)}
-              className="h-10 px-4 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+              type="button"
+              onClick={() => setShowDates(true)}
+              className={[
+                "h-8 w-8 rounded-full inline-flex items-center justify-center border text-sm font-bold select-none",
+                darkMode ? "border-blue-400 text-blue-100" : "border-blue-700 text-blue-800",
+              ].join(" ")}
+              aria-label={`Test ${createdAt}, Modified ${updatedAt}`}
             >
-              Compare
+              i
             </button>
             <button
               onClick={onClose}
@@ -724,109 +797,214 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Charts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div
-            className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-2 md:p-2.5 cursor-pointer transition hover:-translate-y-[1px] active:scale-[0.995]`}
-            onClick={() => openEquation("accuracy")}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") openEquation("accuracy");
-            }}
-          >
-            <div className="flex items-center justify-between mb-3">
+        <div
+          className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} px-3 md:px-4 pb-3 md:pb-4`}
+          style={{ paddingBottom: "0", paddingTop: "11px" }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-0 md:gap-4 items-stretch">
+            <div className="rounded-xl p-2 md:p-3 transition hover:-translate-y-[1px] active:scale-[0.995] h-full flex flex-col">
               <div
-                className="text-sm font-bold text-blue-900 dark:text-blue-200"
+                className="text-sm font-bold text-blue-900 dark:text-blue-200 mb-2"
                 style={{ color: darkMode ? undefined : PALETTE.primary }}
               >
-                Accuracy vs Reference
+                {accuracyTitle}
+              </div>
+              <div className="flex items-center justify-center py-2.5">
+                <div className="w-full h-full max-w-[195px] mx-auto">
+                  <GaugeChart
+                    value={n2(computed.accuracy)}
+                    label="Accuracy"
+                    color={colorForPercent(n2(computed.accuracy), "accuracy")}
+                    darkMode={darkMode}
+                    donut
+                  />
+                </div>
+              </div>
+              <div className="mt-2 flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => openEquation("accuracy")}
+                  className="h-[31px] px-2.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  View details
+                </button>
               </div>
             </div>
-            <div className="flex items-center justify-center py-3">
-              <div className="w-full h-full max-w-[231px] mx-auto">
-                <GaugeChart
-                  value={n2(computed.accuracy)}
-                  label="Accuracy"
-                  color={colorForPercent(n2(computed.accuracy), "accuracy")}
-                  darkMode={darkMode}
-                  donut
-                />
-              </div>
-            </div>
-          </div>
 
-          <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-2 md:p-2.5`}>
-            <div className="flex items-center justify-between mb-3">
+            <div className="hidden md:flex items-center justify-center">
+              <div className={`${divider} border-l-2 h-[92%]`}></div>
+            </div>
+
+            <div className="rounded-none p-2 md:p-3">
               <div
-                className="text-sm font-bold text-blue-900 dark:text-blue-200"
+                className="text-sm font-bold text-blue-900 dark:text-blue-200 mb-2"
                 style={{ color: darkMode ? undefined : PALETTE.primary }}
               >
                 Moisture Content
               </div>
-            </div>
-            <div className="flex items-center justify-center py-3">
-              <div className="w-full h-full max-w-[231px] mx-auto">
-                <GaugeChart
-                  value={Number.isFinite(moistureNum) ? moistureNum : 0}
-                  label="Moisture"
-                  color={colorForPercent(Number.isFinite(moistureNum) ? moistureNum : 0, "moisture")}
-                  darkMode={darkMode}
-                  donut
-                />
+              <div className="flex items-center justify-center py-2.5">
+                <div className="w-full h-full max-w-[186px] mx-auto">
+                  <GaugeChart
+                    key={`moisture-${Number.isFinite(moistureNum) ? moistureNum : "n/a"}`}
+                    value={Number.isFinite(moistureNum) ? moistureNum : 0}
+                    label="Moisture"
+                    color={colorForPercent(Number.isFinite(moistureNum) ? moistureNum : 0, "moisture")}
+                    darkMode={darkMode}
+                    donut
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Number cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatTile
-            label="Test Mode"
-            value={prettyMode(computed.mode)}
-            hint="From test type"
-            accent="blue"
-            darkMode={darkMode}
-            selectable
-            onSelect={() => openEquation("mode")}
-          />
-          <StatTile
-            label="Experimental Stress"
-            value={n2(computed.exp).toFixed(2)}
-            unit="MPa"
-            hint="Computed from P & geometry"
-            accent="blue"
-            darkMode={darkMode}
-            selectable
-            onSelect={() => openEquation("expStress")}
-          />
-          <StatTile
-            label="Reference Stress"
-            value={n2(computed.ref).toFixed(2)}
-            unit="MPa"
-            hint="Species table value"
-            accent="blue"
-            darkMode={darkMode}
-            selectable
-            onSelect={() => openEquation("refStress")}
-          />
+        {/* Number cards in one container with divider */}
+        <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-3 md:p-4`}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 md:gap-6 items-stretch">
+            {/* Experimental */}
+            <div className="relative flex flex-col h-full pr-16">
+              <button
+                type="button"
+                onClick={() => openEquation("expStress")}
+                className="absolute top-0 right-0 h-9 px-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+              >
+                View equation
+              </button>
+              <div className={darkMode ? "text-gray-300 text-[11px] font-extrabold tracking-wide" : "text-gray-600 text-[11px] font-extrabold tracking-wide"}>
+                Experimental Stress
+              </div>
+              <div className={["mt-1 flex items-baseline gap-2", darkMode ? "text-blue-300" : "text-blue-700"].join(" ")}>
+                <div className="text-[25px] font-black tabular-nums">{n2(computed.exp).toFixed(2)}</div>
+                <div className={darkMode ? "text-gray-300 text-[12px] font-bold" : "text-gray-600 text-[12px] font-bold"}>MPa</div>
+              </div>
+              <div className={darkMode ? "text-[11px] text-gray-400 mt-2" : "text-[11px] text-gray-500 mt-2"}>Computed from P & geometry</div>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center justify-center">
+              <div className={`border-l-2 ${divider} h-[92%]`}></div>
+            </div>
+
+            {/* Reference */}
+            <div className="relative flex flex-col h-full pr-16 md:pl-2">
+              <button
+                onClick={() => setShowComparison(true)}
+                className="absolute top-0 right-0 h-9 px-3 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                title="Compare reference"
+              >
+                Compare
+              </button>
+              <div className={darkMode ? "text-gray-300 text-[11px] font-extrabold tracking-wide" : "text-gray-600 text-[11px] font-extrabold tracking-wide"}>
+                Reference Stress
+              </div>
+              <div className={["mt-1 flex items-baseline gap-2", darkMode ? "text-blue-300" : "text-blue-700"].join(" ")}>
+                <div className="text-[25px] font-black tabular-nums">{n2(computed.ref).toFixed(2)}</div>
+                <div className={darkMode ? "text-gray-300 text-[12px] font-bold" : "text-gray-600 text-[12px] font-bold"}>MPa</div>
+              </div>
+              <div className={darkMode ? "text-[11px] text-gray-400 mt-2" : "text-[11px] text-gray-500 mt-2"}>Species table value</div>
+            </div>
+          </div>
         </div>
 
-        {/* Table */}
-        <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-4`}>
+        {/* Specimen metrics */}
+        <div className={`rounded-2xl border ${border} ${darkMode ? PALETTE.darkCard : PALETTE.lightCard} p-3 md:p-4`}>
           <div
             className="text-sm font-bold text-blue-900 dark:text-blue-200 mb-3"
             style={{ color: darkMode ? undefined : PALETTE.primary }}
           >
-            Specimen Details
+            Specimen Metrics
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            <KVRow label="Specimen Name" value={specimenName} darkMode={darkMode} />
-            <KVRow label="Reference Species" value={speciesLabel} darkMode={darkMode} />
-            <KVRow label="Test Type" value={testType} darkMode={darkMode} />
-            <KVRow label="Test Date" value={createdAt} darkMode={darkMode} />
-            <KVRow label="Last Modified" value={updatedAt} darkMode={darkMode} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              { label: "Width", value: `${n2(computed.base).toFixed(2)} mm` },
+              { label: "Height", value: `${n2(computed.height).toFixed(2)} mm` },
+              { label: "Length", value: `${n2(computed.length).toFixed(2)} mm` },
+              { label: "Area", value: `${n2(computed.area).toFixed(2)} mm²` },
+              { label: "Pressure", value: `${n2(computed.bar).toFixed(2)} bar` },
+              { label: "Derived Point Load", value: `${n2(computed.P).toFixed(2)} N` },
+              {
+                label: "Max Force",
+                value: Number.isFinite(n2(currentData?.max_force, NaN))
+                  ? `${n2(currentData?.max_force).toFixed(2)} N`
+                  : "—",
+              },
+              { label: "Stress", value: `${n2(computed.exp).toFixed(2)} MPa` },
+            ].map((m, i) => (
+              <div
+                key={i}
+                className={[
+                  "rounded-xl p-3 border",
+                  darkMode ? "border-[#1f3252] bg-white/5" : "border-[#c9d4e8] bg-black/5",
+                ].join(" ")}
+              >
+                <div className={darkMode ? "text-[11px] font-extrabold text-gray-300 tracking-wide" : "text-[11px] font-extrabold text-gray-600 tracking-wide"}>
+                  {m.label}
+                </div>
+                <div className={darkMode ? "text-[18px] font-black text-blue-300 mt-1" : "text-[18px] font-black text-blue-700 mt-1"}>
+                  {m.value}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+
+        {showComparison ? (
+          <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowComparison(false)}>
+            <div
+              className="w-full max-w-5xl max-h-[90vh] bg-white dark:bg-[#0f192d] rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-[#1f3252]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-[#1f3252]">
+                <div className="font-bold text-sm">Comparison</div>
+                <button
+                  onClick={() => {
+                    setShowComparison(false);
+                    refreshSpecimenData();
+                  }}
+                  className="h-9 px-3 rounded-lg text-sm font-semibold bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="max-h-[80vh] overflow-y-auto">
+                <SpecimenComparison
+                  data={currentData}
+                  dataType={dataType}
+                  darkMode={darkMode}
+                  onSave={handleComparisonSave}
+                  onClose={() => {
+                    setShowComparison(false);
+                    refreshSpecimenData();
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showDates ? (
+          <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowDates(false)}>
+            <div
+              className="w-full max-w-sm rounded-2xl border bg-white dark:bg-[#0f192d] border-gray-200 dark:border-[#1f3252] shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-[#1f3252]">
+                <div className="text-sm font-bold">Test Info</div>
+                <button
+                  onClick={() => setShowDates(false)}
+                  className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-700"
+                  aria-label="Close test info"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="px-4 py-3 text-sm font-semibold space-y-2">
+                <div>Test: {createdAt}</div>
+                <div>Modified: {updatedAt}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <EquationModal
