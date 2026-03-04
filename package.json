@@ -28,19 +28,22 @@
     "package": "electron-builder"
   },
   "build": {
-    "appId": "com.jhonbrix.timbermach",
+    "appId": "com.tsu.timbermach",
     "productName": "Timbermach",
+    "icon": "resources/electron-icon/elec-icon.ico",
     "directories": {
       "output": "C:/Users/Jhon_Brix/Desktop/PERSONAL-PROJECT/Deployment"
     },
     "files": [
       "dist/**",
       "electron/**",
+      "resources/electron-icon/**",
       "package.json"
     ],
     "asar": true,
     "npmRebuild": false,
     "win": {
+      "icon": "resources/electron-icon/elec-icon.ico",
       "signAndEditExecutable": false,
       "target": [
         "nsis"

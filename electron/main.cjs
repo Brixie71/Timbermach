@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
 
@@ -35,6 +35,9 @@ app.commandLine.appendSwitch("ignore-gpu-blocklist");
 async function createWindow() {
   console.log("Creating main window...");
 
+  const iconPath = path.join(__dirname, "../resources/electron-icon/elec-icon.ico");
+  const appIcon = nativeImage.createFromPath(iconPath);
+
   const windowStatePath = path.join(app.getPath("userData"), "window-state.json");
   const windowState = await loadWindowState(windowStatePath);
 
@@ -47,7 +50,7 @@ async function createWindow() {
     minHeight: 480,
     useContentSize: true,
     title: "TimberMach - Wood Testing System",
-    icon: path.join(__dirname, "../public/icon.png"),
+    icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,

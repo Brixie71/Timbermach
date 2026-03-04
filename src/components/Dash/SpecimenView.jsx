@@ -156,8 +156,8 @@ function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = fal
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
       .attr("dy", "-0.07em") // raise text ~7% to align center visually
-      .style("font-size", "35px") // 20% bigger than previous 29px
-      .style("font-weight", "800")
+      .style("font-size", "30px") // 20% bigger than previous 29px
+      .style("font-weight", "500")
       .text(`${prev.toFixed(1)}%`)
       .merge(valueText)
       .attr("fill", darkMode ? "#f9fafb" : "#0f172a")
@@ -384,7 +384,7 @@ function StatTile({ label, value, unit, hint, accent = "blue", darkMode, selecta
     >
       <div className={["text-[11px] font-extrabold tracking-wide", labelCls].join(" ")}>{label}</div>
       <div className="mt-1 flex items-baseline gap-2">
-        <div className={["text-[22px] font-black tabular-nums leading-none", accentCls].join(" ")}>{value}</div>
+        <div className={["text-[22px] font-bold tabular-nums leading-none", accentCls].join(" ")}>{value}</div>
         {unit ? <div className={["text-[12px] font-bold", labelCls].join(" ")}>{unit}</div> : null}
       </div>
       {hint ? <div className={["text-[11px] mt-1", hintCls].join(" ")}>{hint}</div> : null}
@@ -480,7 +480,7 @@ function EquationModal({ open, onClose, darkMode, title, equation, steps, result
             <div className={["text-[12px] font-extrabold tracking-wide", darkMode ? "text-gray-300" : "text-gray-600"].join(" ")}>
               Formula
             </div>
-            <div className="mt-1 text-[15px] font-black tracking-tight tabular-nums">{equation}</div>
+            <div className="mt-1 text-[15px] font-bold tracking-tight tabular-nums">{equation}</div>
           </div>
 
           {steps?.length || result ? (
@@ -498,7 +498,7 @@ function EquationModal({ open, onClose, darkMode, title, equation, steps, result
               {result ? (
                 <div className={["p-4 md:border-l", border, resultPanel, "flex flex-col gap-1 text-center md:text-left"].join(" ")}>
                   <div className="text-[12px] font-extrabold tracking-wide">Result</div>
-                  <div className="text-[22px] font-black tabular-nums">{result}</div>
+                  <div className="text-[22px] font-bold tabular-nums">{result}</div>
                   <div className="text-[12px] font-semibold">computed from current specimen</div>
                 </div>
               ) : null}
@@ -525,18 +525,8 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
 
   const isRefreshingRef = useRef(false);
 
-  const specimenKey = (row) => row?.compressive_id || row?.shear_id || row?.flexure_id || row?.id || null;
-
   useEffect(() => {
-    if (isRefreshingRef.current) return;
-    const incomingKey = specimenKey(data);
-    setCurrentData((prev) => {
-      const prevKey = specimenKey(prev);
-      // Only overwrite when navigating to a different specimen.
-      if (prevKey !== incomingKey) return data;
-      // Keep existing (possibly fresher) data for same specimen.
-      return prev ?? data;
-    });
+    if (!isRefreshingRef.current) setCurrentData(data);
   }, [data]);
 
   useEffect(() => {
@@ -639,20 +629,14 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   const divider = darkMode ? "border-[#3b5b9a]" : "border-[#6b7280]";
   const headerLine = `${prettyMode(computed.mode) || "Test Type"} | ${specimenName || "Specimen"}`;
 
-const acc = n2(computed.accuracy);
-const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
+  const acc = n2(computed.accuracy);
+  const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
 
-const moistureNum =
-  currentData?.moisture_content !== undefined && currentData?.moisture_content !== null
-    ? n2(currentData.moisture_content)
-    : NaN;
-const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
-
-  const handleComparisonSave = (updated) => {
-    if (!updated) return;
-    setCurrentData(updated);
-    if (updated.species_id) fetchReferenceData(updated.species_id);
-  };
+  const moistureNum =
+    currentData?.moisture_content !== undefined && currentData?.moisture_content !== null
+      ? n2(currentData.moisture_content)
+      : NaN;
+  const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
 
   function openEquation(which) {
     const f2 = (x) => n2(x).toFixed(2);
@@ -763,7 +747,7 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
         <div className="flex items-center justify-between px-4 py-3">
           <div className="min-w-0">
             <div
-              className="text-lg font-black truncate"
+              className="text-lg font-bold truncate"
               style={{ color: darkMode ? "#e5ecff" : PALETTE.primary }}
             >
               {headerLine}
@@ -843,9 +827,9 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
                 Moisture Content
               </div>
               <div className="flex items-center justify-center py-2.5">
-                <div className="w-full h-full max-w-[186px] mx-auto">
+                <div className="w-full h-full max-w-[195px] mx-auto">
                   <GaugeChart
-                    key={`moisture-${Number.isFinite(moistureNum) ? moistureNum : "n/a"}`}
+                    key={`moisture-${Number.isFinite(moistureNum) ? moistureNum : "N/A"}`}
                     value={Number.isFinite(moistureNum) ? moistureNum : 0}
                     label="Moisture"
                     color={colorForPercent(Number.isFinite(moistureNum) ? moistureNum : 0, "moisture")}
@@ -874,7 +858,7 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
                 Experimental Stress
               </div>
               <div className={["mt-1 flex items-baseline gap-2", darkMode ? "text-blue-300" : "text-blue-700"].join(" ")}>
-                <div className="text-[25px] font-black tabular-nums">{n2(computed.exp).toFixed(2)}</div>
+                <div className="text-[30px] font-bold tabular-nums">{n2(computed.exp).toFixed(2)}</div>
                 <div className={darkMode ? "text-gray-300 text-[12px] font-bold" : "text-gray-600 text-[12px] font-bold"}>MPa</div>
               </div>
               <div className={darkMode ? "text-[11px] text-gray-400 mt-2" : "text-[11px] text-gray-500 mt-2"}>Computed from P & geometry</div>
@@ -898,7 +882,7 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
                 Reference Stress
               </div>
               <div className={["mt-1 flex items-baseline gap-2", darkMode ? "text-blue-300" : "text-blue-700"].join(" ")}>
-                <div className="text-[25px] font-black tabular-nums">{n2(computed.ref).toFixed(2)}</div>
+                <div className="text-[30px] font-bold tabular-nums">{n2(computed.ref).toFixed(2)}</div>
                 <div className={darkMode ? "text-gray-300 text-[12px] font-bold" : "text-gray-600 text-[12px] font-bold"}>MPa</div>
               </div>
               <div className={darkMode ? "text-[11px] text-gray-400 mt-2" : "text-[11px] text-gray-500 mt-2"}>Species table value</div>
@@ -940,7 +924,7 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
                 <div className={darkMode ? "text-[11px] font-extrabold text-gray-300 tracking-wide" : "text-[11px] font-extrabold text-gray-600 tracking-wide"}>
                   {m.label}
                 </div>
-                <div className={darkMode ? "text-[18px] font-black text-blue-300 mt-1" : "text-[18px] font-black text-blue-700 mt-1"}>
+                <div className={darkMode ? "text-[18px] font-bold text-gray-100 mt-1" : "text-[18px] font-bold text-gray-900 mt-1"}>
                   {m.value}
                 </div>
               </div>
@@ -971,7 +955,6 @@ const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
                   data={currentData}
                   dataType={dataType}
                   darkMode={darkMode}
-                  onSave={handleComparisonSave}
                   onClose={() => {
                     setShowComparison(false);
                     refreshSpecimenData();
