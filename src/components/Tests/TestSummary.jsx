@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { LARAVEL_BASE_URL } from "../../config/servers";
 
 // Helper function to format moisture value
@@ -16,6 +16,7 @@ const TestSummary = ({
   onRetakeStrength,
   onSaveAndFinish,
   onBackToMenu,
+  onRegisterSave = null,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -28,6 +29,10 @@ const TestSummary = ({
   const moistureData = testData?.moistureData || null;
   const measurementData = testData?.measurementData || null;
   const strengthData = testData?.strengthData || null;
+  const pressureMPa =
+    strengthData?.maxPressureMPa ??
+    strengthData?.pressureMPa ??
+    (strengthData?.pressure_bar ? strengthData.pressure_bar * 0.1 : null);
 
   useEffect(() => {
     console.log("=== TestSummary Debug ===");
@@ -49,17 +54,13 @@ const TestSummary = ({
     }
 
     const area = measurementData.areaMM2;
-    // strengthData.maxForce is in MPa (pressure), we need force in N
-    // If we have maxPressureMPa, use that instead
-    const pressureMPa = strengthData.maxPressureMPa || strengthData.maxForce;
-    
     if (!area || !pressureMPa) {
       console.log("Cannot calculate stress: missing required values");
       return null;
     }
 
-    // Pressure (MPa) = Force (N) / Area (mm²)
-    // Therefore: Force (N) = Pressure (MPa) * Area (mm²)
+    // Pressure (MPa) = Force (N) / Area (mmÂ²)
+    // Therefore: Force (N) = Pressure (MPa) * Area (mmÂ²)
     const forceN = pressureMPa * area;
 
     let stress = 0;
@@ -67,7 +68,7 @@ const TestSummary = ({
 
     try {
       if (baseTestType === "compressive") {
-        stress = forceN / area; // σ = P/A
+        stress = forceN / area; // Ïƒ = P/A
       } else if (baseTestType === "shear") {
         if (subType === "single") {
           const shearArea = measurementData.width * measurementData.length;
@@ -94,21 +95,18 @@ const TestSummary = ({
 
   const stress = calculateStress();
 
-  // Get pressure directly from strengthData (it's already in MPa)
-  const pressure = strengthData?.maxPressureMPa || strengthData?.maxForce || null;
-
   // Calculate actual force in kN
   const calculateForceKN = () => {
-    if (!measurementData?.areaMM2 || !pressure) return null;
-    // Force (N) = Pressure (MPa = N/mm²) * Area (mm²)
-    const forceN = pressure * measurementData.areaMM2;
+    if (!measurementData?.areaMM2 || !pressureMPa) return null;
+    // Force (N) = Pressure (MPa = N/mmÂ²) * Area (mmÂ²)
+    const forceN = pressureMPa * measurementData.areaMM2;
     return forceN / 1000; // Convert to kN
   };
 
   const forceKN = calculateForceKN();
 
   // Prepare database data
-  const prepareDataForDatabase = () => {
+  const prepareDataForDatabase = useCallback(() => {
     if (!testType) return null;
 
     try {
@@ -132,24 +130,25 @@ const TestSummary = ({
         height: measurementData?.height || 0,
         length: measurementData?.length || 0,
         area: measurementData?.areaMM2 || 0,
-        pressure: pressure || 0,  // MPa
+        pressure: pressureMPa || 0,  // MPa
+        pressure_bar: pressureMPa ? pressureMPa * 10 : 0, // bar
         moisture_content: formatMoistureValue(moistureData?.value),
-        max_force: forceKN || 0,  // kN (calculated from pressure * area)
+        max_force: forceKN ? forceKN * 1000 : 0,  // N (calculated from pressure * area)
         stress: stress || 0,
         species_id: null,
         photo: null,
       };
 
-      console.log("📦 Prepared database data:", dbData);
+      console.log("ðŸ“¦ Prepared database data:", dbData);
       return dbData;
     } catch (err) {
       console.error("Error preparing database data:", err);
       return null;
     }
-  };
+  }, [testType, subType, specimenName, measurementData, pressureMPa, moistureData, forceKN, stress]);
 
   // Handle save
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setSaveError(null);
     setSaveSuccess(false);
     setIsSaving(true);
@@ -175,8 +174,8 @@ const TestSummary = ({
       const baseTestType = testType.toLowerCase().replace(" test", "").trim();
       const endpoint = `${LARAVEL_API_URL}/api/${baseTestType}-data`;
 
-      console.log("💾 Saving to:", endpoint);
-      console.log("📤 Payload:", dbData);
+      console.log("ðŸ’¾ Saving to:", endpoint);
+      console.log("ðŸ“¤ Payload:", dbData);
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -189,7 +188,7 @@ const TestSummary = ({
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ Server response:", errorText);
+        console.error("âŒ Server response:", errorText);
 
         try {
           const errorData = JSON.parse(errorText);
@@ -206,17 +205,24 @@ const TestSummary = ({
       }
 
       const result = await response.json();
-      console.log("✅ Save successful:", result);
+      console.log("âœ… Save successful:", result);
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
-      console.error("❌ Save failed:", err);
+      console.error("âŒ Save failed:", err);
       setSaveError(err.message);
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [prepareDataForDatabase, specimenName, strengthData, testType]);
+
+  useEffect(() => {
+    if (onRegisterSave) onRegisterSave(handleSave);
+    return () => {
+      if (onRegisterSave) onRegisterSave(null);
+    };
+  }, [handleSave, onRegisterSave]);
 
   const hasMoisture = !!moistureData;
   const hasMeasurement = !!measurementData;
@@ -245,7 +251,7 @@ const TestSummary = ({
             onClick={onBackToMenu}
             className="text-2xl text-gray-200 hover:text-gray-400"
           >
-            ✕
+            âœ•
           </button>
         </div>
       </div>
@@ -256,7 +262,7 @@ const TestSummary = ({
         {saveSuccess && (
           <div className="px-4 py-3 bg-green-900 border-b border-green-700">
             <div className="text-green-200 text-sm font-semibold">
-              ✅ Success! Test data saved to database!
+              âœ… Success! Test data saved to database!
             </div>
           </div>
         )}
@@ -264,7 +270,7 @@ const TestSummary = ({
         {saveError && (
           <div className="px-4 py-3 bg-red-900 border-b border-red-700">
             <div className="text-red-200 text-sm font-semibold">
-              ❌ Error: {saveError}
+              âŒ Error: {saveError}
             </div>
           </div>
         )}
@@ -272,7 +278,7 @@ const TestSummary = ({
         {!specimenName && (
           <div className="px-4 py-3 bg-yellow-900 border-b border-yellow-700">
             <div className="text-yellow-200 text-sm font-semibold">
-              ⚠️ Warning: No specimen name set!
+              âš ï¸ Warning: No specimen name set!
             </div>
           </div>
         )}
@@ -304,11 +310,11 @@ const TestSummary = ({
             <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <div className="text-xs text-gray-400">✓ Moisture Content</div>
+                <div className="text-xs text-gray-400">âœ“ Moisture Content</div>
               </div>
               {onRetakeMoisture && (
                 <button onClick={onRetakeMoisture} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">
-                  🔄 Retake
+                  ðŸ”„ Retake
                 </button>
               )}
             </div>
@@ -327,11 +333,11 @@ const TestSummary = ({
             <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <div className="text-xs text-gray-400">✓ Dimension Measurement</div>
+                <div className="text-xs text-gray-400">âœ“ Dimension Measurement</div>
               </div>
               {onRetakeMeasurement && (
                 <button onClick={onRetakeMeasurement} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">
-                  🔄 Retake
+                  ðŸ”„ Retake
                 </button>
               )}
             </div>
@@ -347,9 +353,9 @@ const TestSummary = ({
                 <div className="mt-1 text-xs text-gray-400">{(measurementData.height / 25.4).toFixed(3)}"</div>
               </div>
               <div className="px-4 py-3 border-r border-gray-700">
-                <div className="text-xs text-gray-400">Area (A = b × h):</div>
-                <div className="mt-1 text-lg font-medium text-gray-100">{measurementData.areaMM2?.toFixed(2)} mm²</div>
-                <div className="mt-1 text-xs text-gray-400">{(measurementData.areaMM2 / 645.16).toFixed(3)} in²</div>
+                <div className="text-xs text-gray-400">Area (A = b Ã— h):</div>
+                <div className="mt-1 text-lg font-medium text-gray-100">{measurementData.areaMM2?.toFixed(2)} mmÂ²</div>
+                <div className="mt-1 text-xs text-gray-400">{(measurementData.areaMM2 / 645.16).toFixed(3)} inÂ²</div>
               </div>
               {measurementData.length && (
                 <div className="px-4 py-3">
@@ -368,11 +374,11 @@ const TestSummary = ({
             <div className="px-4 py-3 bg-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                <div className="text-xs text-gray-400">✓ Strength Test</div>
+                <div className="text-xs text-gray-400">âœ“ Strength Test</div>
               </div>
               {onRetakeStrength && (
                 <button onClick={onRetakeStrength} className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">
-                  🔄 Retake
+                  ðŸ”„ Retake
                 </button>
               )}
             </div>
@@ -380,7 +386,7 @@ const TestSummary = ({
               <div className="px-4 py-4 border-r border-gray-700">
                 <div className="text-xs text-gray-400 mb-2">Maximum Pressure:</div>
                 <div className="text-3xl font-bold text-red-400 mb-1">
-                  {pressure ? pressure.toFixed(2) : "N/A"} MPa
+                  {pressureMPa ? pressureMPa.toFixed(2) : "N/A"} MPa
                 </div>
                 <div className="text-xs text-gray-400">
                   {forceKN ? `${forceKN.toFixed(2)} kN` : "N/A"}
@@ -396,7 +402,7 @@ const TestSummary = ({
                 </div>
               </div>
               <div className="px-4 py-4">
-                <div className="text-xs text-gray-400 mb-2">Stress (σ):</div>
+                <div className="text-xs text-gray-400 mb-2">Stress (Ïƒ):</div>
                 <div className="text-3xl font-bold text-purple-400 mb-1">
                   {stress ? stress.toFixed(2) : "N/A"}
                 </div>
@@ -412,7 +418,7 @@ const TestSummary = ({
         <div className="border-b border-gray-700">
           <details className="group">
             <summary className="px-4 py-3 bg-gray-800 cursor-pointer text-xs text-gray-400 hover:text-gray-300">
-              🔍 View Database Payload (Debug)
+              ðŸ” View Database Payload (Debug)
             </summary>
             <div className="px-4 py-4 bg-gray-900">
               <pre className="text-xs text-gray-400 overflow-auto">

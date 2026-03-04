@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import SpecimenComparison from "./SpecimenComparison";
 import { laravelUrl } from "../../config/servers";
@@ -77,7 +77,7 @@ function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = fal
     const radius = size / 2;
     const thickness = donut ? 45 : radius; // keep ring proportional with smaller size
     const sweep = Math.PI * 2; // full circle
-    const startAngle = Math.PI; // start at 180° (left in d3's top-origin system, gap at bottom after sweep)
+    const startAngle = Math.PI; // start at 180Â° (left in d3's top-origin system, gap at bottom after sweep)
     const endAngle = startAngle + sweep;
     const angleFor = (pct) => startAngle + (sweep * pct) / 100;
     const restColor = darkMode ? "#111827" : "#e5eaf3"; // clearer dark/light backgrounds
@@ -138,7 +138,7 @@ function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = fal
       .merge(val)
       .transition()
       .duration(dur)
-      .ease(isFirst ? d3.easeElasticOut : d3.easeCubicOut)
+      .ease(d3.easeCubicOut)
       .attrTween("d", function (d) {
         const interpolate = d3.interpolateNumber(this._current, angleFor(d));
         this._current = interpolate(1);
@@ -172,18 +172,6 @@ function GaugeChart({ value = 0, label, color = "#0f2f5f", darkMode, donut = fal
         const i = d3.interpolateNumber(prev, d);
         return (t) => that.text(`${i(t).toFixed(1)}%`);
       });
-
-    // Subtle pulse on update to highlight change
-    g.interrupt("pulse")
-      .attr("transform", baseTransform)
-      .transition("pulse")
-      .duration(150)
-      .ease(d3.easeCubicOut)
-      .attr("transform", `${baseTransform} scale(1.02)`)
-      .transition("pulse")
-      .duration(150)
-      .ease(d3.easeCubicIn)
-      .attr("transform", baseTransform);
 
     g.selectAll("text.gc-label").remove(); // remove label under percentage
     firstRenderRef.current = false;
@@ -519,6 +507,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   const [showComparison, setShowComparison] = useState(false);
   const [showDates, setShowDates] = useState(false);
   const [currentData, setCurrentData] = useState(data);
+  const [moistureGaugeValue, setMoistureGaugeValue] = useState(0);
 
   const [eqOpen, setEqOpen] = useState(false);
   const [eqPayload, setEqPayload] = useState({ title: "", equation: "", steps: [], result: "" });
@@ -628,6 +617,10 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
   // higher-contrast divider between charts
   const divider = darkMode ? "border-[#3b5b9a]" : "border-[#6b7280]";
   const headerLine = `${prettyMode(computed.mode) || "Test Type"} | ${specimenName || "Specimen"}`;
+  const modalPanel = darkMode ? "bg-[#0f192d] border-[#1f3252] text-gray-100" : "bg-white border-gray-200 text-gray-900";
+  const modalButton = darkMode
+    ? "bg-gray-800 text-gray-100 hover:bg-gray-700"
+    : "bg-gray-200 text-gray-900 hover:bg-gray-300";
 
   const acc = n2(computed.accuracy);
   const accuracyAccent = acc >= 90 ? "green" : acc >= 60 ? "blue" : "red";
@@ -637,6 +630,14 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
       ? n2(currentData.moisture_content)
       : NaN;
   const moistureTxt = Number.isFinite(moistureNum) ? moistureNum.toFixed(2) : "-";
+
+  // Animate moisture gauge from 0 to the current value on first load and on updates.
+  useEffect(() => {
+    const target = Number.isFinite(moistureNum) ? moistureNum : 0;
+    setMoistureGaugeValue(0);
+    const timer = setTimeout(() => setMoistureGaugeValue(target), 80);
+    return () => clearTimeout(timer);
+  }, [moistureNum]);
 
   function openEquation(which) {
     const f2 = (x) => n2(x).toFixed(2);
@@ -786,7 +787,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
           style={{ paddingBottom: "0", paddingTop: "11px" }}
         >
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-0 md:gap-4 items-stretch">
-            <div className="rounded-xl p-2 md:p-3 transition hover:-translate-y-[1px] active:scale-[0.995] h-full flex flex-col">
+            <div className="rounded-xl p-2 md:p-3 h-full flex flex-col">
               <div
                 className="text-sm font-bold text-blue-900 dark:text-blue-200 mb-2"
                 style={{ color: darkMode ? undefined : PALETTE.primary }}
@@ -829,8 +830,7 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               <div className="flex items-center justify-center py-2.5">
                 <div className="w-full h-full max-w-[195px] mx-auto">
                   <GaugeChart
-                    key={`moisture-${Number.isFinite(moistureNum) ? moistureNum : "N/A"}`}
-                    value={Number.isFinite(moistureNum) ? moistureNum : 0}
+                    value={moistureGaugeValue}
                     label="Moisture"
                     color={colorForPercent(Number.isFinite(moistureNum) ? moistureNum : 0, "moisture")}
                     darkMode={darkMode}
@@ -903,14 +903,14 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
               { label: "Width", value: `${n2(computed.base).toFixed(2)} mm` },
               { label: "Height", value: `${n2(computed.height).toFixed(2)} mm` },
               { label: "Length", value: `${n2(computed.length).toFixed(2)} mm` },
-              { label: "Area", value: `${n2(computed.area).toFixed(2)} mm²` },
+              { label: "Area", value: `${n2(computed.area).toFixed(2)} mmÂ²` },
               { label: "Pressure", value: `${n2(computed.bar).toFixed(2)} bar` },
               { label: "Derived Point Load", value: `${n2(computed.P).toFixed(2)} N` },
               {
                 label: "Max Force",
                 value: Number.isFinite(n2(currentData?.max_force, NaN))
                   ? `${n2(currentData?.max_force).toFixed(2)} N`
-                  : "—",
+                  : "â€”",
               },
               { label: "Stress", value: `${n2(computed.exp).toFixed(2)} MPa` },
             ].map((m, i) => (
@@ -968,14 +968,14 @@ const SpecimenView = ({ data, dataType, darkMode = false, onClose }) => {
         {showDates ? (
           <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowDates(false)}>
             <div
-              className="w-full max-w-sm rounded-2xl border bg-white dark:bg-[#0f192d] border-gray-200 dark:border-[#1f3252] shadow-2xl overflow-hidden"
+              className={["w-full max-w-sm rounded-2xl border shadow-2xl overflow-hidden", modalPanel].join(" ")}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-[#1f3252]">
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: darkMode ? "#1f3252" : "#e5e7eb" }}>
                 <div className="text-sm font-bold">Test Info</div>
                 <button
                   onClick={() => setShowDates(false)}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-700"
+                  className={["h-8 w-8 rounded-lg flex items-center justify-center", modalButton].join(" ")}
                   aria-label="Close test info"
                 >
                   ×

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, shell, nativeImage } = require("electron");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs/promises");
+const { existsSync } = require("fs");
 
 let mainWindow;
 const isTest = process.env.NODE_ENV === "test" || process.env.ELECTRON_TEST === "1";
@@ -26,6 +28,101 @@ const saveWindowState = async (statePath, state) => {
     console.warn("Unable to persist window state:", error.message);
   }
 };
+
+const SERVICE_START_TIMEOUT_MS = Number(process.env.SERVICE_START_TIMEOUT_MS || 45000);
+
+function getLauncherBatPath() {
+  if (!app.isPackaged) {
+    // DEV: project root
+    return path.join(__dirname, "..", "Timbermach-Launcher.bat");
+  }
+
+  // PROD: packaged via extraResources (see package.json build.extraResources)
+  return path.join(process.resourcesPath, "Timbermach-Launcher.bat");
+}
+
+function getKillBatPath() {
+  if (!app.isPackaged) {
+    return path.join(__dirname, "..", "killServices.bat");
+  }
+  return path.join(process.resourcesPath, "killServices.bat");
+}
+
+function startBackendServices() {
+  if (process.platform !== "win32") {
+    console.log("Skipping launcher: Windows BAT only");
+    return Promise.resolve();
+  }
+
+  const batPath = getLauncherBatPath();
+  if (!existsSync(batPath)) {
+    console.warn("Launcher BAT not found at:", batPath);
+    return Promise.resolve();
+  }
+
+  console.log("Starting services using:", batPath);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("cmd.exe", ["/c", batPath], {
+      cwd: path.dirname(batPath),
+      windowsHide: false,
+      detached: false,
+      stdio: "inherit",
+    });
+
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn(`Service launcher still running after ${SERVICE_START_TIMEOUT_MS}ms; continuing app startup.`);
+      resolve(); // proceed even if launcher keeps running (common when it tails logs)
+    }, SERVICE_START_TIMEOUT_MS);
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    child.on("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        console.log("Service launcher exited cleanly.");
+        resolve();
+      } else {
+        reject(new Error(`Launcher BAT exited with code ${code}`));
+      }
+    });
+  });
+}
+
+function stopBackendServices() {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const batPath = getKillBatPath();
+  if (!existsSync(batPath)) {
+    console.warn("Kill BAT not found at:", batPath);
+    return;
+  }
+
+  console.log("Stopping services using:", batPath);
+  try {
+    spawn("cmd.exe", ["/c", batPath], {
+      cwd: path.dirname(batPath),
+      windowsHide: false,
+      detached: false,
+      stdio: "inherit",
+    });
+  } catch (err) {
+    console.error("Failed to spawn kill BAT:", err);
+  }
+}
 
 // Reduce occlusion overhead on some iGPUs; keep GPU path simple.
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
@@ -80,30 +177,39 @@ async function createWindow() {
     mainWindow.focus();
   });
 
-  const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+  try {
+    await startBackendServices();
+  } catch (serviceError) {
+    console.error("Service launcher failed:", serviceError);
+    // Continue launching UI so the user can see the error logs.
+  }
 
-  if (isDev) {
-    console.log("🔧 DEVELOPMENT MODE");
-    console.log("Loading from Vite dev server: http://localhost:5173");
+  const envTarget = (process.env.ENV_NAME || '').trim();
+  const isUrlTarget = /^https?:\/\//i.test(envTarget);
+  const isDevEnv = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+  if (isUrlTarget) {
+    console.log('Loading renderer from ENV_NAME');
 
     mainWindow
-      .loadURL("http://localhost:5173")
-      .then(() => console.log("✅ Loaded successfully from dev server"))
+      .loadURL(envTarget)
+      .then(() => console.log('Loaded successfully from ENV_NAME'))
       .catch((err) => {
-        console.error("❌ Failed to load from dev server:", err);
-        console.log("Make sure Vite is running on port 5173");
+        console.error('Failed to load from ENV_NAME:', err);
       });
-
-    mainWindow.webContents.openDevTools();
   } else {
-    console.log("🚀 PRODUCTION MODE");
-    const indexPath = path.join(__dirname, "../dist/index.html");
-    console.log("Loading from:", indexPath);
+    console.log('PRODUCTION / FILE MODE');
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    console.log('Loading renderer from file:', indexPath);
 
     mainWindow
       .loadFile(indexPath)
-      .then(() => console.log("✅ Loaded successfully from build"))
-      .catch((err) => console.error("❌ Failed to load from build:", err));
+      .then(() => console.log('Loaded successfully from build'))
+      .catch((err) => console.error('Failed to load from build:', err));
+  }
+
+  if (isDevEnv) {
+    mainWindow.webContents.openDevTools();
   }
 
   if (windowState.isMaximized) {
@@ -198,6 +304,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   console.log("App is about to quit");
+  stopBackendServices();
 });
 
 app.on("will-quit", () => {

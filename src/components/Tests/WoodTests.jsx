@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./WoodTests.css";
 import { useTouchControls } from "../../Utils/TouchControls";
-import KiloNewtonGauge from "./KiloNewtonGuage";
+import PressureSensor from "./PressureSensor";
 import MoistureTestPage from "./MoistureTest";
 import DimensionMeasurementPage from "./Measurement";
 import TestSummary from "./TestSummary";
@@ -157,7 +157,10 @@ const WoodTests = ({ darkMode = false }) => {
   const [reviewImage, setReviewImage] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showBackConfirm, setShowBackConfirm] = useState(false);
   const DRAFT_KEY = "timbermach:testDraft:v1";
+  const skipNextAutoSaveRef = useRef(false);
+  const summarySaveRef = useRef(null);
 
   // Test data storage
   const [testData, setTestData] = useState({
@@ -202,6 +205,30 @@ const WoodTests = ({ darkMode = false }) => {
         }
       : null;
 
+  const buildDraftPayload = () => ({
+    selectedTest,
+    subType,
+    specimenName,
+    includeMeasurement,
+    includeMoisture,
+    currentTestStage,
+    testStarted,
+    testData: {
+      ...testData,
+      moistureData: pruneMoisture(testData.moistureData),
+      measurementData: pruneMeasurement(testData.measurementData),
+      strengthData: pruneStrength(testData.strengthData),
+    },
+  });
+
+  const saveDraftSnapshot = () => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(buildDraftPayload()));
+    } catch (e) {
+      console.warn("Failed to save draft", e);
+    }
+  };
+
   // load draft once
   useEffect(() => {
     try {
@@ -233,26 +260,11 @@ const WoodTests = ({ darkMode = false }) => {
 
   // save draft when key state changes
   useEffect(() => {
-    try {
-      const payload = {
-        selectedTest,
-        subType,
-        specimenName,
-        includeMeasurement,
-        includeMoisture,
-        currentTestStage,
-        testStarted,
-        testData: {
-          ...testData,
-          moistureData: pruneMoisture(testData.moistureData),
-          measurementData: pruneMeasurement(testData.measurementData),
-          strengthData: pruneStrength(testData.strengthData),
-        },
-      };
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn("Failed to save draft", e);
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
     }
+    saveDraftSnapshot();
   }, [
     selectedTest,
     subType,
@@ -268,6 +280,48 @@ const WoodTests = ({ darkMode = false }) => {
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
+  };
+
+  const registerSummarySave = useCallback((fn) => {
+    summarySaveRef.current = fn;
+  }, []);
+
+  const runSummarySave = async () => {
+    const fn = summarySaveRef.current;
+    if (typeof fn === "function") {
+      await fn();
+      return true;
+    }
+    return false;
+  };
+
+  const resetToSelection = () => {
+    setTestStarted(false);
+    setSelectedTest(null);
+    resetSelections();
+  };
+
+  const handleBackPrompt = () => setShowBackConfirm(true);
+  const handleBackCancel = () => setShowBackConfirm(false);
+  const handleSaveAndStay = async () => {
+    try {
+      await runSummarySave();
+      saveDraftSnapshot();
+      setShowBackConfirm(false);
+    } catch (e) {
+      console.error("Save before staying failed:", e);
+    }
+  };
+  const handleSaveAndGoBack = async () => {
+    try {
+      await runSummarySave();
+      saveDraftSnapshot();
+      skipNextAutoSaveRef.current = true;
+      resetToSelection();
+      setShowBackConfirm(false);
+    } catch (e) {
+      console.error("Save before leaving failed:", e);
+    }
   };
 
   // Updated with correct image paths from your code
@@ -510,6 +564,52 @@ const WoodTests = ({ darkMode = false }) => {
     resetSelections();
   };
 
+  const backConfirmModal = showBackConfirm ? (
+    <div className="fixed inset-0 z-[240] bg-black/70 backdrop-blur-sm flex items-center justify-center px-4">
+      <div
+        className={`w-full max-w-md rounded-2xl border shadow-2xl ${
+          darkMode ? "bg-gray-900 border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900"
+        }`}
+      >
+        <div className={`px-5 py-4 border-b ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
+          <div className="text-lg font-bold">Leave results?</div>
+          <div className={`text-sm mt-1 ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+            Are you sure you want to go back without saving your results?
+          </div>
+        </div>
+        <div className="px-5 py-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={handleBackCancel}
+            className={`w-full sm:w-auto px-4 py-2 rounded-lg font-semibold ${
+              darkMode ? "bg-gray-800 text-gray-100 hover:bg-gray-700" : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+            }`}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveAndGoBack}
+            className={`w-full sm:w-auto px-4 py-2 rounded-lg font-semibold ${
+              darkMode ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-blue-600 text-white hover:bg-blue-700"
+            }`}
+          >
+            Save and Go Back
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveAndStay}
+            className={`w-full sm:w-auto px-4 py-2 rounded-lg font-semibold ${
+              darkMode ? "bg-emerald-700 text-white hover:bg-emerald-800" : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
+          >
+            Save and Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // Render test stages
   if (testStarted) {
     if (currentTestStage === "moistureTest") {
@@ -546,7 +646,7 @@ const WoodTests = ({ darkMode = false }) => {
 
     if (currentTestStage === "mainTest") {
       return (
-        <KiloNewtonGauge
+        <PressureSensor
           testType={selectedTest}
           subType={subType}
           specimenName={specimenName}
@@ -574,28 +674,27 @@ const WoodTests = ({ darkMode = false }) => {
             : "N/A";
 
       return (
-        <StageResultView
-          darkMode={darkMode}
-          title="Moisture Test Result"
-          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
-          rows={[
-            { label: "Moisture", value: moistureValue },
-            { label: "Method", value: m.method || "Automatic" },
-            {
-              label: "Captured",
-              value: capturedAt
-                ? new Date(capturedAt).toLocaleString()
-                : "Just completed",
-            },
-          ]}
-          onRetake={() => setCurrentTestStage("moistureTest")}
-          onContinue={() => setCurrentTestStage(getNextStage("moistureTest"))}
-          onBackToMenu={() => {
-            setTestStarted(false);
-            setSelectedTest(null);
-            resetSelections();
-          }}
-        />
+        <>
+          <StageResultView
+            darkMode={darkMode}
+            title="Moisture Test Result"
+            subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+            rows={[
+              { label: "Moisture", value: moistureValue },
+              { label: "Method", value: m.method || "Automatic" },
+              {
+                label: "Captured",
+                value: capturedAt
+                  ? new Date(capturedAt).toLocaleString()
+                  : "Just completed",
+              },
+            ]}
+            onRetake={() => setCurrentTestStage("moistureTest")}
+            onContinue={() => setCurrentTestStage(getNextStage("moistureTest"))}
+            onBackToMenu={handleBackPrompt}
+          />
+          {backConfirmModal}
+        </>
       );
     }
 
@@ -625,11 +724,7 @@ const WoodTests = ({ darkMode = false }) => {
             rows={rows}
             onRetake={() => setCurrentTestStage("dimensionTest")}
             onContinue={() => setCurrentTestStage(getNextStage("dimensionTest"))}
-            onBackToMenu={() => {
-              setTestStarted(false);
-              setSelectedTest(null);
-              resetSelections();
-            }}
+            onBackToMenu={handleBackPrompt}
             onReviewCapture={
               reviewSrc
                 ? () => {
@@ -661,6 +756,7 @@ const WoodTests = ({ darkMode = false }) => {
               </div>
             </div>
           )}
+          {backConfirmModal}
         </>
       );
     }
@@ -671,46 +767,49 @@ const WoodTests = ({ darkMode = false }) => {
       const duration = Number(s.duration || 0);
 
       return (
-        <StageResultView
-          darkMode={darkMode}
-          title="Strength Test Result"
-          subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
-          rows={[
-            {
-              label: "Max Pressure",
-              value: maxForce ? `${maxForce.toFixed(2)} MPa` : "N/A",
-            },
-            {
-              label: "Duration",
-              value: Number.isFinite(duration) && duration > 0
-                ? `${duration.toFixed(1)} s`
-                : "N/A",
-            },
-            {
-              label: "Captured",
-              value: s.timestamp ? new Date(s.timestamp).toLocaleString() : "Just completed",
-            },
-          ]}
-          onRetake={() => setCurrentTestStage("mainTest")}
-          onContinue={() => setCurrentTestStage(getNextStage("mainTest"))}
-          onBackToMenu={() => {
-            setTestStarted(false);
-            setSelectedTest(null);
-            resetSelections();
-          }}
-        />
+        <>
+          <StageResultView
+            darkMode={darkMode}
+            title="Strength Test Result"
+            subtitle={specimenName ? `Specimen: ${specimenName}` : ""}
+            rows={[
+              {
+                label: "Max Pressure",
+                value: maxForce ? `${maxForce.toFixed(2)} MPa` : "N/A",
+              },
+              {
+                label: "Duration",
+                value: Number.isFinite(duration) && duration > 0
+                  ? `${duration.toFixed(1)} s`
+                  : "N/A",
+              },
+              {
+                label: "Captured",
+                value: s.timestamp ? new Date(s.timestamp).toLocaleString() : "Just completed",
+              },
+            ]}
+            onRetake={() => setCurrentTestStage("mainTest")}
+            onContinue={() => setCurrentTestStage(getNextStage("mainTest"))}
+            onBackToMenu={handleBackPrompt}
+          />
+          {backConfirmModal}
+        </>
       );
     }
 
     if (currentTestStage === "summary") {
       return (
-        <TestSummary
-          testData={testData}
-          onRetakeMoisture={includeMoisture ? handleRetakeMoisture : null}
-          onRetakeMeasurement={handleRetakeMeasurement}
-          onRetakeStrength={handleRetakeStrength}
-          onBackToMenu={handleSummaryComplete}
-        />
+        <>
+          <TestSummary
+            testData={testData}
+            onRetakeMoisture={includeMoisture ? handleRetakeMoisture : null}
+            onRetakeMeasurement={handleRetakeMeasurement}
+            onRetakeStrength={handleRetakeStrength}
+            onRegisterSave={registerSummarySave}
+            onBackToMenu={handleBackPrompt}
+          />
+          {backConfirmModal}
+        </>
       );
     }
   }

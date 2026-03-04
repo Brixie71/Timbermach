@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:deploy": "vite build --outDir \"C:/Users/Jhon_Brix/Desktop/PERSONAL-PROJECT/Deployment/dist\"",
+    "postinstall": "electron-builder install-app-deps && npm dedupe",
     "dev:react": "vite --host",
     "dev:laravel": "cd C:/xampp/htdocs/TIMBER && php artisan serve",
     "dev:python": "set PYTHONIOENCODING=utf-8&& cd python-backend && python app.py",
@@ -32,8 +33,18 @@
     "productName": "Timbermach",
     "icon": "resources/electron-icon/elec-icon.ico",
     "directories": {
-      "output": "C:/Users/Jhon_Brix/Desktop/PERSONAL-PROJECT/Deployment"
+    "output": "C:/Users/Jhon_Brix/Desktop/PERSONAL-PROJECT/Deployment"
+  },
+  "extraResources": [
+    {
+      "from": "Timbermach-Launcher.bat",
+      "to": "Timbermach-Launcher.bat"
     },
+    {
+      "from": "killServices.bat",
+      "to": "killServices.bat"
+    }
+  ],
     "files": [
       "dist/**",
       "electron/**",
@@ -60,8 +71,8 @@
     "axios": "^1.13.2",
     "d3": "^7.9.0",
     "lucide-react": "^0.562.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "serialport": "^13.0.0",
     "ws": "^8.19.0"
   },
@@ -71,8 +82,8 @@
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",
-    "electron-builder": "^26.4.0",
-    "electron-rebuild": "^3.2.9",
+    "electron-builder": "^26.8.1",
+    "@electron/rebuild": "^4.0.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "vite": "^7.3.1",
